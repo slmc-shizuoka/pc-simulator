@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自作PC 組み立てシミュレーター | PC Builder</title>
+    <!-- Tailwind CSS (スタイリング用ユーティリティ) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons (アイコン用) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Three.js (3D描画用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans JP"', 'sans-serif'],
+                        tech: ['"Rajdhani"', 'sans-serif'],
+                    },
+                    colors: {
+                        gaming: {
+                            900: '#0a0a0c',
+                            800: '#14151a',
+                            700: '#1e2028',
+                            accent: '#10b981', // Emerald 500
+                            alert: '#ef4444',  // Red 500
+                            warn: '#f59e0b',   // Amber 500
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* カスタムスクロールバーの設定 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #14151a; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #10b981; 
+        }
+
+        /* アニメーション関連 */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gaming-900 text-gray-200 min-h-screen flex flex-col">
+
+    <!-- ヘッダー -->
+    <header class="bg-gaming-800 border-b border-gaming-700 py-4 px-6 sticky top-0 z-50 shadow-md">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <i class="ph-fill ph-cpu text-3xl text-gaming-accent"></i>
+                <h1 class="text-2xl font-tech font-bold tracking-wider text-white">PC BUILDER <span class="text-sm font-sans text-gray-400 font-normal">シミュレーター</span></h1>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="relative group">
+                    <button class="text-sm px-4 py-2 rounded bg-gaming-700 border border-gaming-600 hover:bg-gaming-accent hover:text-white transition-colors flex items-center gap-2 font-bold cursor-pointer">
+                        <i class="ph ph-magic-wand"></i> おすすめ構成
+                    </button>
+                    <!-- ドロップダウンメニュー (位置調整と隙間の解消) -->
+                    <div class="absolute right-0 top-full pt-2 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                        <div class="bg-gaming-800 border border-gray-700 rounded shadow-xl overflow-hidden">
+                            <button onclick="applyPreset('highEnd')" class="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold text-white border-b border-gray-700 cursor-pointer">ハイエンドゲーミング</button>
+                            <button onclick="applyPreset('costPerf')" class="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold text-white cursor-pointer">コスパ重視モデル</button>
+                        </div>
+                    </div>
+                </div>
+                <button id="reset-btn" class="text-sm px-4 py-2 rounded border border-gray-600 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 cursor-pointer">
+                    <i class="ph ph-arrow-counter-clockwise"></i> 構成をリセット
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-grow max-w-7xl mx-auto w-full p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 左カラム：パーツ選択パネル -->
+        <section class="lg:col-span-7 flex flex-col gap-4 h-[calc(100vh-120px)]">
+            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-4 shadow-lg flex-grow flex flex-col overflow-hidden">
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="ph ph-list-magnifying-glass text-gaming-accent"></i> パーツを選択</h2>
+                
+                <!-- カテゴリタブ -->
+                <div id="category-tabs" class="flex overflow-x-auto pb-2 mb-4 border-b border-gray-700 gap-2 flex-shrink-0">
+                    <!-- JSで動的に生成 -->
+                </div>
+
+                <!-- カテゴリ解説と選び方のポイント (新機能) -->
+                <div id="category-info" class="bg-blue-900/20 border border-blue-800 p-3 rounded-lg mb-4 flex gap-3 items-start flex-shrink-0">
+                    <i class="ph-fill ph-info text-blue-400 text-xl mt-0.5 flex-shrink-0"></i>
+                    <div>
+                        <h3 id="cat-role" class="text-blue-100 font-bold text-sm mb-1">役割</h3>
+                        <p id="cat-tips" class="text-blue-300 text-xs leading-relaxed">選び方</p>
+                    </div>
+                </div>
+
+                <!-- パーツリスト表示エリア -->
+                <div id="parts-list" class="flex-grow overflow-y-auto pr-2 space-y-3">
+                    <!-- JSで動的に生成 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 右カラム：プレビュー・ステータスパネル -->
+        <section class="lg:col-span-5 flex flex-col gap-4 h-[calc(100vh-120px)] overflow-y-auto pb-10 lg:pb-0">
+            
+            <!-- ステータスダッシュボード -->
+            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-5 shadow-lg">
+                <!-- 消費電力ゲージ -->
+                <div class="mb-2 flex justify-between text-sm">
+                    <span class="text-gray-400 font-bold flex items-center gap-2"><i class="ph ph-lightning text-gaming-accent text-lg"></i> 推定消費電力 (TDP)</span>
+                    <span id="power-text" class="font-tech font-bold text-lg">0W / 0W</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mb-4 overflow-hidden relative">
+                    <div id="power-bar" class="bg-gaming-accent h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+
+                <!-- 互換性チェック結果表示エリア -->
+                <div id="compatibility-alerts" class="space-y-2 empty:hidden">
+                    <!-- JSで動的に警告・エラーを生成 -->
+                </div>
+            </div>
+
+            <!-- 視覚的プレビュー (PCケース内部) -->
+            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-5 shadow-lg flex-grow flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2"><i class="ph ph-cube text-gaming-accent"></i> 3D アセンブリビュー</h2>
+                    <span class="text-xs text-gray-400"><i class="ph ph-hand-grabbing"></i> ドラッグで回転・拡大</span>
+                </div>
+                
+                <div id="3d-container" class="flex-grow bg-gaming-900 rounded-lg border border-gray-800 relative overflow-hidden min-h-[300px] cursor-move shadow-inner">
+                    <!-- Three.js Canvas goes here -->
+                    <div id="3d-loading" class="absolute inset-0 flex items-center justify-center text-gaming-accent bg-gaming-900/80 z-10">
+                        <div class="flex flex-col items-center gap-2">
+                            <i class="ph ph-spinner animate-spin text-3xl"></i>
+                            <span class="text-sm font-bold">3Dエンジン起動中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 組み立てガイド (新機能) -->
+            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-5 shadow-lg relative overflow-hidden flex-shrink-0">
+                <div class="absolute top-0 left-0 w-1 h-full bg-gaming-accent"></div>
+                <h2 class="text-lg font-bold mb-3 flex items-center gap-2"><i class="ph ph-chalkboard-teacher text-gaming-accent"></i> 組み立て手順ガイド</h2>
+                <div id="assembly-guide" class="text-sm text-gray-300 leading-relaxed bg-gaming-900/50 p-4 rounded border border-gaming-700">
+                    <!-- JSで動的に生成 -->
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- 専用の確認モーダル -->
+    <div id="custom-modal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center opacity-0 transition-opacity duration-200">
+        <div class="bg-gaming-800 border border-gaming-700 rounded-xl p-6 max-w-sm w-full shadow-2xl transform scale-95 transition-transform duration-200" id="custom-modal-content">
+            <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2"><i class="ph-fill ph-warning-circle text-gaming-warn"></i> 確認</h3>
+            <p class="text-gray-300 text-sm mb-6" id="custom-modal-message">本当に実行しますか？</p>
+            <div class="flex justify-end gap-3">
+                <button id="custom-modal-cancel" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white font-bold text-sm transition-colors cursor-pointer">キャンセル</button>
+                <button id="custom-modal-ok" class="px-4 py-2 rounded bg-gaming-accent hover:bg-emerald-400 text-gaming-900 font-bold text-sm transition-colors shadow-lg shadow-emerald-900/50 cursor-pointer">実行する</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 1. データベース (PCパーツのダミーデータ)
+         * - 後から追加しやすいようにカテゴリごとに配列で管理
+         * - 互換性チェック用のプロパティ(socket, formFactor, tdp等)を持たせる
+         */
+        const partsDatabase = {
+            cpu: [
+                { id: 'c1', name: 'Intel Core i9-14900K', desc: '最強クラスのゲーム＆クリエイター向けCPU', socket: 'LGA1700', tdp: 253, price: 95000 },
+                { id: 'c2', name: 'Intel Core i5-13400F', desc: 'コスパ抜群のミドルクラスCPU', socket: 'LGA1700', tdp: 65, price: 32000 },
+                { id: 'c3', name: 'AMD Ryzen 9 7950X3D', desc: 'ゲーム性能に特化したハイエンドCPU', socket: 'AM5', tdp: 120, price: 110000 },
+                { id: 'c4', name: 'AMD Ryzen 5 7600', desc: 'AM5プラットフォーム入門に最適', socket: 'AM5', tdp: 65, price: 35000 },
+            ],
+            motherboard: [
+                { id: 'm1', name: 'ASUS ROG MAXIMUS Z790 HERO', desc: 'Intel用ハイエンドマザー(DDR5対応)', socket: 'LGA1700', formFactor: 'ATX', memoryType: 'DDR5', price: 98000 },
+                { id: 'm2', name: 'MSI MAG B760M MORTAR', desc: 'Intel用コスパマザー(Micro-ATX, DDR4対応)', socket: 'LGA1700', formFactor: 'Micro-ATX', memoryType: 'DDR4', price: 24000 },
+                { id: 'm3', name: 'ASRock X670E Taichi', desc: 'AMD用究極の拡張性を持つマザーボード', socket: 'AM5', formFactor: 'E-ATX', memoryType: 'DDR5', price: 85000 },
+                { id: 'm4', name: 'GIGABYTE B650M DS3H', desc: 'AMD用スタンダードマザー(Micro-ATX)', socket: 'AM5', formFactor: 'Micro-ATX', memoryType: 'DDR5', price: 18000 },
+            ],
+            memory: [
+                { id: 'mem1', name: 'Corsair Vengeance RGB DDR5-6000 32GB (16GBx2)', type: 'DDR5', tdp: 10, price: 21000 },
+                { id: 'mem2', name: 'Crucial Pro DDR5-5600 32GB (16GBx2)', type: 'DDR5', tdp: 8, price: 16000 },
+                { id: 'mem3', name: 'G.Skill Trident Z RGB DDR4-3600 32GB (16GBx2)', type: 'DDR4', tdp: 8, price: 14000 },
+                { id: 'mem4', name: 'Silicon Power DDR4-3200 16GB (8GBx2)', type: 'DDR4', tdp: 5, price: 5500 },
+            ],
+            gpu: [
+                { id: 'g1', name: 'NVIDIA GeForce RTX 4090 24GB', desc: '現行最強グラボ。超巨大で大電力。', tdp: 450, length: 342, price: 320000 },
+                { id: 'g2', name: 'NVIDIA GeForce RTX 4070 SUPER 12GB', desc: 'WQHDゲームに最適なハイスペック', tdp: 220, length: 261, price: 110000 },
+                { id: 'g3', name: 'NVIDIA GeForce RTX 4060 8GB', desc: 'フルHD向けコンパクトグラボ', tdp: 115, length: 200, price: 52000 },
+                { id: 'g4', name: 'AMD Radeon RX 7900 XTX 24GB', desc: 'AMDのフラッグシップ。VRAM大容量。', tdp: 355, length: 287, price: 165000 },
+            ],
+            storage: [
+                { id: 's1', name: 'Samsung 990 PRO 2TB (M.2 NVMe Gen4)', type: 'M.2', tdp: 8, price: 26000 },
+                { id: 's2', name: 'WD Blue SN580 1TB (M.2 NVMe Gen4)', type: 'M.2', tdp: 5, price: 11000 },
+                { id: 's3', name: 'Crucial MX500 1TB (SATA SSD)', type: 'SATA', tdp: 5, price: 9500 },
+            ],
+            powerSupply: [
+                { id: 'p1', name: 'Corsair RM1000x (1000W 80PLUS Gold)', wattage: 1000, price: 25000 },
+                { id: 'p2', name: 'Thermaltake Toughpower 850W Gold', wattage: 850, price: 16000 },
+                { id: 'p3', name: '玄人志向 KRPW-BK650W/85+ (650W Bronze)', wattage: 650, price: 8500 },
+            ],
+            case: [
+                { id: 'cs1', name: 'NZXT H5 Flow', desc: '冷却性抜群の定番ATXケース', formFactor: ['ATX', 'Micro-ATX', 'Mini-ITX'], maxLengthGPU: 365, price: 13500 },
+                { id: 'cs2', name: 'Fractal Design Meshify 2 Mini', desc: '高品質なコンパクトケース', formFactor: ['Micro-ATX', 'Mini-ITX'], maxLengthGPU: 306, price: 18000 },
+                { id: 'cs3', name: 'Lian Li O11 Dynamic EVO', desc: '魅せるPCの最高峰', formFactor: ['E-ATX', 'ATX', 'Micro-ATX', 'Mini-ITX'], maxLengthGPU: 426, price: 28000 },
+            ]
+        };
+
+        // UI表示用のカテゴリメタデータ (役割と選び方の解説を追加)
+        const categoryMeta = [
+            { id: 'cpu', name: 'CPU', icon: 'ph-cpu', role: 'PCの「頭脳」。全体の処理速度を決定します。', tips: '用途に合わせて性能を選びます。IntelとAMDがあり、マザーボードの「ソケット」と一致させる必要があります。' },
+            { id: 'motherboard', name: 'マザーボード', icon: 'ph-motherboard', role: '全てのパーツを接続する「土台」。', tips: 'CPUのソケット規格に合わせるのが絶対条件。ケースに入るサイズ（ATX、Micro-ATXなど）かも重要です。' },
+            { id: 'memory', name: 'メモリ', icon: 'ph-memory', role: 'データを一時的に記憶する「作業机」。', tips: '容量が大きいほど複数のアプリを同時に快適に動かせます。マザーボードの対応規格（DDR4/DDR5）と合わせます。' },
+            { id: 'gpu', name: 'グラフィックボード', icon: 'ph-graphics-card', role: '映像処理の専用パーツ。ゲームや3D作業に必須。', tips: '非常に大きく、電力を多く消費します。PCケースに入る長さか、電源容量は足りているか確認しましょう。' },
+            { id: 'storage', name: 'ストレージ', icon: 'ph-hard-drive', role: 'OSやデータを長期間保存する「本棚」。', tips: '現在はマザーボードに直接挿す超高速な「M.2 SSD」が主流です。容量は1TB以上がおすすめです。' },
+            { id: 'powerSupply', name: '電源ユニット', icon: 'ph-plug', role: '各パーツに電力を供給する「心臓」。', tips: '全パーツの消費電力(TDP)の合計から、30%ほど余裕を持たせた容量(W)を選ぶと安定して動作します。' },
+            { id: 'case', name: 'PCケース', icon: 'ph-desktop-tower', role: '全てのパーツを収納する「箱」。', tips: 'マザーボードのサイズと、グラフィックボードの長さに対応しているか（物理的に入るか）を必ずチェックしましょう。' },
+        ];
+
+        /**
+         * 2. アプリケーションの状態管理 (State)
+         */
+        const state = {
+            currentCategory: 'cpu', // 現在開いているタブ
+            selectedParts: {
+                cpu: null,
+                motherboard: null,
+                memory: null,
+                gpu: null,
+                storage: null,
+                powerSupply: null,
+                case: null
+            },
+            errors: [],   // 互換性エラー
+            warnings: []  // 警告（推奨環境から外れている等）
+        };
+
+        /**
+         * 3. DOM要素の取得
+         */
+        const els = {
+            tabsContainer: document.getElementById('category-tabs'),
+            catRole: document.getElementById('cat-role'),
+            catTips: document.getElementById('cat-tips'),
+            partsList: document.getElementById('parts-list'),
+            powerText: document.getElementById('power-text'),
+            powerBar: document.getElementById('power-bar'),
+            alertsContainer: document.getElementById('compatibility-alerts'),
+            resetBtn: document.getElementById('reset-btn'),
+            container3D: document.getElementById('3d-container'),
+            loading3D: document.getElementById('3d-loading'),
+            assemblyGuide: document.getElementById('assembly-guide')
+        };
+
+        // UIブロッカー回避のための専用モーダル制御
+        const customModal = {
+            overlay: document.getElementById('custom-modal'),
+            content: document.getElementById('custom-modal-content'),
+            message: document.getElementById('custom-modal-message'),
+            okBtn: document.getElementById('custom-modal-ok'),
+            cancelBtn: document.getElementById('custom-modal-cancel'),
+            
+            show(msg, onConfirm) {
+                this.message.innerText = msg;
+                this.overlay.classList.remove('hidden');
+                
+                // アニメーションのため少し遅延させてクラス変更
+                requestAnimationFrame(() => {
+                    this.overlay.classList.remove('opacity-0');
+                    this.content.classList.remove('scale-95');
+                });
+                
+                const handleConfirm = () => {
+                    this.hide();
+                    onConfirm();
+                    cleanup();
+                };
+                
+                const handleCancel = () => {
+                    this.hide();
+                    cleanup();
+                };
+                
+                const cleanup = () => {
+                    this.okBtn.removeEventListener('click', handleConfirm);
+                    this.cancelBtn.removeEventListener('click', handleCancel);
+                };
+                
+                this.okBtn.addEventListener('click', handleConfirm);
+                this.cancelBtn.addEventListener('click', handleCancel);
+            },
+            
+            hide() {
+                this.overlay.classList.add('opacity-0');
+                this.content.classList.add('scale-95');
+                setTimeout(() => {
+                    this.overlay.classList.add('hidden');
+                }, 200);
+            }
+        };
+
+        /**
+         * 4. 初期化処理
+         */
+        function init() {
+            init3D(); // 3Dエンジンの初期化
+            renderTabs();
+            renderPartsList();
+            updateDashboard();
+            
+            els.resetBtn.addEventListener('click', () => {
+                // confirm() の代わりにカスタムモーダルを使用
+                customModal.show('現在の構成をすべてリセットしますか？', () => {
+                    state.selectedParts = { cpu: null, motherboard: null, memory: null, gpu: null, storage: null, powerSupply: null, case: null };
+                    state.currentCategory = 'cpu';
+                    renderTabs();
+                    renderPartsList();
+                    updateDashboard();
+                });
+            });
+        }
+
+        /**
+         * 5. UIレンダリング関数
+         */
+        // カテゴリタブの描画
+        function renderTabs() {
+            els.tabsContainer.innerHTML = '';
+            categoryMeta.forEach(cat => {
+                const isSelected = state.currentCategory === cat.id;
+                const hasPart = state.selectedParts[cat.id] !== null;
+                
+                const btn = document.createElement('button');
+                btn.className = `whitespace-nowrap px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors ${
+                    isSelected 
+                        ? 'bg-gaming-accent text-white shadow-lg shadow-emerald-900/50' 
+                        : 'bg-gaming-700 text-gray-400 hover:bg-gaming-600 hover:text-gray-200'
+                }`;
+                
+                // パーツ選択済みの場合はチェックマークを表示
+                const checkIcon = hasPart ? `<i class="ph-fill ph-check-circle text-white"></i>` : '';
+                
+                btn.innerHTML = `<i class="ph ${cat.icon} text-lg"></i> ${cat.name} ${checkIcon}`;
+                btn.addEventListener('click', () => {
+                    state.currentCategory = cat.id;
+                    renderTabs();
+                    renderPartsList();
+                });
+                els.tabsContainer.appendChild(btn);
+
+                // 選択中のタブに合わせて解説テキストを更新
+                if(isSelected) {
+                    els.catRole.innerHTML = `役割：<span class="text-blue-100">${cat.role}</span>`;
+                    els.catTips.innerText = `💡 選び方のコツ：${cat.tips}`;
+                }
+            });
+        }
+
+        // 選択中カテゴリのパーツリスト描画
+        function renderPartsList() {
+            els.partsList.innerHTML = '';
+            const parts = partsDatabase[state.currentCategory];
+            const currentSelectedId = state.selectedParts[state.currentCategory]?.id;
+
+            parts.forEach(part => {
+                const isSelected = currentSelectedId === part.id;
+                
+                // 互換性フィルター機能
+                const compatibility = checkPartCompatibility(part, state.currentCategory);
+                const isCompatible = compatibility.valid;
+                const disableBtn = !isCompatible && !isSelected; // すでに選択されている場合は無効化しない
+
+                const card = document.createElement('div');
+                card.className = `fade-in p-4 rounded-lg border-2 transition-all ${
+                    isSelected 
+                        ? 'bg-gaming-700/80 border-gaming-accent shadow-[0_0_15px_rgba(16,185,129,0.2)]' 
+                        : (disableBtn ? 'bg-gaming-900 border-red-900/50 opacity-60' : 'bg-gaming-800 border-gaming-700 hover:border-gray-500')
+                } flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center`;
+
+                // パーツ詳細情報の生成（カテゴリによって表示するスペックを変える）
+                let specsHtml = '';
+                if (state.currentCategory === 'cpu') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">ソケット: ${part.socket}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">TDP: ${part.tdp}W</span>`;
+                if (state.currentCategory === 'motherboard') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">ソケット: ${part.socket}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">サイズ: ${part.formFactor}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">メモリ: ${part.memoryType}</span>`;
+                if (state.currentCategory === 'memory') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">規格: ${part.type}</span>`;
+                if (state.currentCategory === 'gpu') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">長さ: ${part.length}mm</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">TDP: ${part.tdp}W</span>`;
+                if (state.currentCategory === 'powerSupply') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">容量: ${part.wattage}W</span>`;
+                if (state.currentCategory === 'case') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">対応MB: ${part.formFactor.join(', ')}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">GPU最大長: ${part.maxLengthGPU}mm</span>`;
+
+                card.innerHTML = `
+                    <div class="flex-grow">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-bold text-lg text-white">${part.name}</h3>
+                            ${!isCompatible ? `<span class="bg-red-900/80 text-red-200 text-[10px] px-2 py-0.5 rounded border border-red-700 font-bold whitespace-nowrap">${compatibility.reason}</span>` : ''}
+                        </div>
+                        ${part.desc ? `<p class="text-xs text-gray-400 mb-2">${part.desc}</p>` : ''}
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            ${specsHtml}
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end gap-2 w-full sm:w-auto">
+                        ${isSelected 
+                            ? `<button class="w-full sm:w-auto px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold text-sm transition-colors" onclick="removePart('${state.currentCategory}')">選択解除</button>`
+                            : `<button class="w-full sm:w-auto px-6 py-2 rounded font-bold text-sm transition-colors shadow-lg ${disableBtn ? 'bg-gray-800 text-gray-500 cursor-not-allowed shadow-none border border-gray-700' : 'bg-gaming-accent hover:bg-emerald-400 text-gaming-900 shadow-emerald-900/50'}" onclick="selectPart('${state.currentCategory}', '${part.id}')" ${disableBtn ? 'disabled' : ''}>選択する</button>`
+                        }
+                    </div>
+                `;
+                els.partsList.appendChild(card);
+            });
+            
+            if (parts.length === 0) {
+                els.partsList.innerHTML = `<p class="text-gray-500 p-4">このカテゴリのパーツデータがありません。</p>`;
+            }
+        }
+
+        /**
+         * 6. アクション関数 (パーツの選択・解除)
+         */
+        window.selectPart = function(category, partId) {
+            const part = partsDatabase[category].find(p => p.id === partId);
+            state.selectedParts[category] = part;
+            
+            // 次のカテゴリへ自動遷移する親切設計
+            const currentIndex = categoryMeta.findIndex(c => c.id === category);
+            if (currentIndex < categoryMeta.length - 1) {
+                state.currentCategory = categoryMeta[currentIndex + 1].id;
+                renderTabs();
+            }
+            
+            renderPartsList();
+            updateDashboard();
+        };
+
+        window.removePart = function(category) {
+            state.selectedParts[category] = null;
+            renderPartsList();
+            updateDashboard();
+        };
+
+        // 新機能: 個別パーツのスマート互換性チェック（一覧でのグレーアウト用）
+        function checkPartCompatibility(part, category) {
+            const current = state.selectedParts;
+            
+            if (category === 'cpu' && current.motherboard) {
+                if (part.socket !== current.motherboard.socket) return { valid: false, reason: 'マザーボードとソケットが不適合' };
+            }
+            if (category === 'motherboard') {
+                if (current.cpu && part.socket !== current.cpu.socket) return { valid: false, reason: 'CPUとソケットが不適合' };
+                if (current.memory && part.memoryType !== current.memory.type) return { valid: false, reason: 'メモリ規格が不適合' };
+                if (current.case && !current.case.formFactor.includes(part.formFactor)) return { valid: false, reason: 'ケースに収まらないサイズ' };
+            }
+            if (category === 'memory' && current.motherboard) {
+                if (part.type !== current.motherboard.memoryType) return { valid: false, reason: 'マザーボード非対応規格' };
+            }
+            if (category === 'gpu' && current.case) {
+                if (part.length > current.case.maxLengthGPU) return { valid: false, reason: 'ケースに収まらない長さ' };
+            }
+            if (category === 'case') {
+                if (current.motherboard && !part.formFactor.includes(current.motherboard.formFactor)) return { valid: false, reason: 'マザーボードが入らない' };
+                if (current.gpu && part.maxLengthGPU < current.gpu.length) return { valid: false, reason: 'グラボが入らない' };
+            }
+            
+            return { valid: true };
+        }
+
+        // 新機能: おすすめ構成の自動適用
+        window.applyPreset = function(presetType) {
+            // confirm() の代わりにカスタムモーダルを使用
+            customModal.show('現在の構成を上書きしてプリセットを適用しますか？', () => {
+                if (presetType === 'highEnd') {
+                    state.selectedParts = {
+                        cpu: partsDatabase.cpu.find(p => p.id === 'c1'),
+                        motherboard: partsDatabase.motherboard.find(p => p.id === 'm1'),
+                        memory: partsDatabase.memory.find(p => p.id === 'mem1'),
+                        gpu: partsDatabase.gpu.find(p => p.id === 'g1'),
+                        storage: partsDatabase.storage.find(p => p.id === 's1'),
+                        powerSupply: partsDatabase.powerSupply.find(p => p.id === 'p1'),
+                        case: partsDatabase.case.find(p => p.id === 'cs3')
+                    };
+                } else if (presetType === 'costPerf') {
+                    state.selectedParts = {
+                        cpu: partsDatabase.cpu.find(p => p.id === 'c2'),
+                        motherboard: partsDatabase.motherboard.find(p => p.id === 'm2'),
+                        memory: partsDatabase.memory.find(p => p.id === 'mem4'),
+                        gpu: partsDatabase.gpu.find(p => p.id === 'g3'),
+                        storage: partsDatabase.storage.find(p => p.id === 's2'),
+                        powerSupply: partsDatabase.powerSupply.find(p => p.id === 'p3'),
+                        case: partsDatabase.case.find(p => p.id === 'cs1')
+                    };
+                }
+                
+                state.currentCategory = 'cpu';
+                renderTabs();
+                renderPartsList();
+                updateDashboard();
+            });
+        };
+
+        /**
+         * 7. 互換性チェックロジックと計算
+         */
+        function evaluateCompatibility() {
+            state.errors = [];
+            state.warnings = [];
+            
+            const { cpu, motherboard, memory, gpu, powerSupply, case: pcCase } = state.selectedParts;
+
+            // 1. CPUとマザーボードのソケット互換性
+            if (cpu && motherboard) {
+                if (cpu.socket !== motherboard.socket) {
+                    state.errors.push(`<b>ソケット不適合:</b> 選択したCPU(${cpu.socket})とマザーボード(${motherboard.socket})は物理的に接続できません。`);
+                }
+            }
+
+            // 2. マザーボードとメモリの規格互換性
+            if (motherboard && memory) {
+                if (motherboard.memoryType !== memory.type) {
+                    state.errors.push(`<b>メモリ規格不適合:</b> マザーボード(${motherboard.memoryType}対応)に${memory.type}メモリは挿入できません。`);
+                }
+            }
+
+            // 3. マザーボードとケースのサイズ互換性
+            if (motherboard && pcCase) {
+                if (!pcCase.formFactor.includes(motherboard.formFactor)) {
+                    state.errors.push(`<b>サイズ不適合:</b> ケース(${pcCase.name})にマザーボード(${motherboard.formFactor})は大きすぎて入りません。`);
+                }
+            }
+
+            // 4. GPUの長さとケースの干渉チェック
+            if (gpu && pcCase) {
+                if (gpu.length > pcCase.maxLengthGPU) {
+                    state.errors.push(`<b>GPUサイズ超過:</b> グラフィックボードが長すぎます(GPU:${gpu.length}mm > ケース限界:${pcCase.maxLengthGPU}mm)。ケースに収まりません。`);
+                } else if (gpu.length > pcCase.maxLengthGPU - 15) {
+                    state.warnings.push(`<b>GPUスペース注意:</b> グラボのクリアランスがギリギリです。配線が困難な可能性があります。`);
+                }
+            }
+
+            // 5. 消費電力と電源容量のチェック
+            let totalTdp = 0;
+            if(cpu) totalTdp += cpu.tdp;
+            if(gpu) totalTdp += gpu.tdp;
+            if(memory) totalTdp += memory.tdp;
+            if(state.selectedParts.storage) totalTdp += state.selectedParts.storage.tdp;
+            // マザーボードやファンなどの基本消費電力として+50Wを見込む
+            if(motherboard) totalTdp += 50;
+
+            if (powerSupply) {
+                const recommendedWattage = totalTdp * 1.3; // 30%の余裕を持たせるのが定石
+                if (totalTdp > powerSupply.wattage) {
+                    state.errors.push(`<b>電源容量不足:</b> システムの最大消費電力(${totalTdp}W)が電源容量(${powerSupply.wattage}W)を超えています。システムが落ちます。`);
+                } else if (recommendedWattage > powerSupply.wattage) {
+                    state.warnings.push(`<b>電源容量の余裕少:</b> 推奨電源容量(約${Math.ceil(recommendedWattage)}W)に対して現在の電源(${powerSupply.wattage}W)はギリギリです。ワンランク上の電源を推奨します。`);
+                }
+            }
+
+            return totalTdp;
+        }
+
+        /**
+         * 8. ダッシュボードと視覚化の更新
+         */
+        function updateDashboard() {
+            // 互換性チェック実行
+            const totalTdp = evaluateCompatibility();
+
+            // 電力表示更新
+            const psuCapacity = state.selectedParts.powerSupply ? state.selectedParts.powerSupply.wattage : 0;
+            els.powerText.innerText = `${totalTdp}W / ${psuCapacity ? psuCapacity + 'W' : '未選択'}`;
+            
+            let powerPercent = 0;
+            if (psuCapacity > 0) {
+                powerPercent = Math.min((totalTdp / psuCapacity) * 100, 100);
+            } else if (totalTdp > 0) {
+                powerPercent = 100; // PSU未選択で電力を消費している場合はバーを振り切らせる
+            }
+            
+            els.powerBar.style.width = `${powerPercent}%`;
+            // 容量に応じたバーの色変更
+            if (powerPercent > 90) els.powerBar.className = "h-2.5 rounded-full transition-all duration-500 bg-gaming-alert";
+            else if (powerPercent > 70) els.powerBar.className = "h-2.5 rounded-full transition-all duration-500 bg-gaming-warn";
+            else els.powerBar.className = "h-2.5 rounded-full transition-all duration-500 bg-gaming-accent";
+
+            // アラートの描画
+            els.alertsContainer.innerHTML = '';
+            
+            // 全くパーツが選ばれていない時のガイド
+            if (Object.values(state.selectedParts).every(p => p === null)) {
+                els.alertsContainer.innerHTML = `
+                    <div class="bg-blue-900/30 border border-blue-700 text-blue-300 p-3 rounded text-sm flex gap-2 items-start fade-in">
+                        <i class="ph ph-info mt-0.5 text-lg text-blue-400"></i>
+                        <div><b>Tip:</b> まずはPCの頭脳となる「CPU」から選び始めるのがおすすめです！</div>
+                    </div>
+                `;
+            }
+
+            state.errors.forEach(err => {
+                const div = document.createElement('div');
+                div.className = "bg-gaming-alert/20 border border-gaming-alert text-red-200 p-3 rounded text-sm flex gap-2 items-start fade-in";
+                div.innerHTML = `<i class="ph-fill ph-warning-circle mt-0.5 text-lg text-gaming-alert"></i><div>${err}</div>`;
+                els.alertsContainer.appendChild(div);
+            });
+            
+            state.warnings.forEach(warn => {
+                const div = document.createElement('div');
+                div.className = "bg-gaming-warn/20 border border-gaming-warn text-yellow-100 p-3 rounded text-sm flex gap-2 items-start fade-in";
+                div.innerHTML = `<i class="ph-fill ph-warning mt-0.5 text-lg text-gaming-warn"></i><div>${warn}</div>`;
+                els.alertsContainer.appendChild(div);
+            });
+
+            // 視覚的プレビューの更新
+            updateVisualizer();
+
+            // 組み立てガイドの更新
+            updateAssemblyGuide();
+        }
+
+        // --- 3D Visualization Logic (Three.js) ---
+        let scene, camera, renderer, controls;
+        const meshes = {};
+        
+        // 簡易的な3Dパーツのサイズ、配置位置、色の定義
+        const partDefinitions = {
+            case: { size: [4.5, 9, 9], pos: [0, 0, 0], color: 0x374151, opacity: 0.1, transparent: true, wireframe: true },
+            motherboard: { size: [0.2, 7, 6], pos: [1.8, 1, -1], color: 0x1f2937 },
+            cpu: { size: [0.3, 1.5, 1.5], pos: [1.6, 2.5, -2], color: 0x10b981 }, 
+            memory: { size: [0.4, 2.5, 1.5], pos: [1.6, 2.5, 0.5], color: 0x3b82f6 }, 
+            gpu: { size: [2.5, 1.5, 6], pos: [0.5, -0.5, -1], color: 0x8b5cf6 }, 
+            powerSupply: { size: [4, 2.5, 3.5], pos: [0, -3.2, 2.5], color: 0xf59e0b }, 
+            storage: { size: [0.3, 0.5, 2], pos: [1.6, -2, -2], color: 0x06b6d4 } 
+        };
+
+        function init3D() {
+            if (!els.container3D) return;
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#0a0a0c'); // bg-gaming-900
+
+            camera = new THREE.PerspectiveCamera(45, els.container3D.clientWidth / els.container3D.clientHeight, 0.1, 1000);
+            camera.position.set(-15, 8, 15); // 左斜め上から見下ろす初期アングル
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(els.container3D.clientWidth, els.container3D.clientHeight);
+            els.container3D.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(0, 0, 0);
+
+            // 照明の設定
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+            
+            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+            dirLight2.position.set(-10, -10, -10);
+            scene.add(dirLight2);
+
+            // 床のグリッド
+            const gridHelper = new THREE.GridHelper(20, 20, 0x374151, 0x1f2937);
+            gridHelper.position.y = -5;
+            scene.add(gridHelper);
+
+            // パーツごとのメッシュを生成してシーンに追加
+            for (const [key, def] of Object.entries(partDefinitions)) {
+                const geometry = new THREE.BoxGeometry(def.size[0], def.size[1], def.size[2]);
+                const material = new THREE.MeshLambertMaterial({ 
+                    color: def.color,
+                    transparent: def.transparent || false,
+                    opacity: def.opacity || 1.0,
+                    wireframe: def.wireframe || false,
+                    depthWrite: !def.transparent
+                });
+                
+                // 輪郭線を追加して形状を分かりやすくする
+                const edges = new THREE.EdgesGeometry(geometry);
+                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 }));
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.add(line);
+                
+                // 初期状態は画面上空に配置し、非表示にする
+                mesh.position.set(def.pos[0], def.pos[1] + 15, def.pos[2]); 
+                mesh.visible = false;
+                
+                scene.add(mesh);
+                meshes[key] = mesh;
+            }
+
+            els.loading3D.style.display = 'none';
+
+            // リサイズ対応
+            window.addEventListener('resize', () => {
+                if (!els.container3D) return;
+                camera.aspect = els.container3D.clientWidth / els.container3D.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(els.container3D.clientWidth, els.container3D.clientHeight);
+            });
+
+            animate3D();
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            controls.update();
+
+            // パーツが選択されている場合、滑らかに定位置へ落下させるアニメーション
+            for (const key in meshes) {
+                if (meshes[key].visible) {
+                    const targetY = partDefinitions[key].pos[1];
+                    meshes[key].position.y += (targetY - meshes[key].position.y) * 0.15;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function updateVisualizer() {
+            // エラー状態の判定（パーツを赤くハイライトするため）
+            const hasSocketError = state.errors.some(e => e.includes('ソケット不適合'));
+            const hasMemoryError = state.errors.some(e => e.includes('メモリ規格不適合'));
+            const hasSizeError = state.errors.some(e => e.includes('サイズ不適合'));
+            const hasGpuError = state.errors.some(e => e.includes('GPUサイズ超過'));
+
+            const updateMesh = (category, isError = false) => {
+                const part = state.selectedParts[category];
+                const mesh = meshes[category];
+                if (!mesh) return;
+
+                if (part) {
+                    // 新規に選択された時だけ、上空に配置して落下アニメーションをトリガー
+                    if (!mesh.visible) {
+                        mesh.position.y = partDefinitions[category].pos[1] + 8; 
+                        mesh.visible = true;
+                    }
+                    
+                    // エラー時は赤色(0xef4444)、正常時はデフォルト色を適用
+                    mesh.material.color.setHex(isError ? 0xef4444 : partDefinitions[category].color);
+                    if(category === 'case') {
+                        mesh.material.color.setHex(isError ? 0xef4444 : partDefinitions.case.color);
+                    }
+                } else {
+                    mesh.visible = false; // 未選択時は非表示
+                }
+            };
+
+            updateMesh('powerSupply');
+            updateMesh('motherboard', hasSocketError || hasMemoryError || hasSizeError);
+            updateMesh('cpu', hasSocketError);
+            updateMesh('memory', hasMemoryError);
+            updateMesh('storage');
+            updateMesh('gpu', hasGpuError);
+            updateMesh('case', hasSizeError || hasGpuError);
+        }
+
+        // 新機能: 組み立て手順ガイド
+        function updateAssemblyGuide() {
+            let guideHtml = '';
+            const { cpu, motherboard, memory, gpu, powerSupply, case: pcCase, storage } = state.selectedParts;
+
+            // 選ばれていないパーツを順に判定し、次のステップを案内する
+            if (!cpu) {
+                guideHtml = `<span class="text-gaming-accent font-bold">STEP 1: CPUの選択</span><br>まずはPCの性能の要となる「CPU」を選びましょう。`;
+            } else if (!motherboard) {
+                guideHtml = `<span class="text-gaming-accent font-bold">STEP 2: マザーボードの選択</span><br>選んだCPUのソケット（${cpu.socket}）に対応したマザーボードを選びます。`;
+            } else if (!memory) {
+                guideHtml = `<span class="text-gaming-accent font-bold">STEP 3: メモリの取り付け</span><br>マザーボード（${motherboard.memoryType}対応）にメモリを挿します。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> 向きに注意して、両端のツメがカチッと鳴るまで真っ直ぐ上から押し込みます。</span>`;
+            } else if (!storage) {
+                guideHtml = `<span class="text-gaming-accent font-bold">STEP 4: ストレージの取り付け</span><br>データを保存するSSDを選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> M.2 SSDはマザーボードの専用スロットに斜めに挿し込み、小さなネジで固定します。</span>`;
+            } else if (!pcCase) {
+                guideHtml = `<span class="text-gaming-accent font-bold">STEP 5: PCケースの選択</span><br>これまでのパーツ（${motherboard.formFactor}サイズ）が収まるケースを選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> マザーボードをケースにネジ止めする前に、CPU・メモリ・SSDを基板に取り付けておくのがセオリーです。</span>`;
+            } else if (!powerSupply) {
+                guideHtml = `<span class="text-gaming-accent font-bold">STEP 6: 電源の配線</span><br>システム全体に電気を送る電源を選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> ケースの所定位置にネジ止めし、マザーボードやCPUのコネクタに太いケーブルをしっかりと挿し込みます。</span>`;
+            } else if (!gpu) {
+                guideHtml = `<span class="text-gaming-accent font-bold">STEP 7: グラフィックボードの取り付け</span><br>最後にゲームの要、グラボを選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> 非常に大きいので、ケースの中で他のケーブルに干渉しないようにマザーボードのPCIeスロットに挿し込み、ケースにネジ止めします。</span>`;
+            } else {
+                guideHtml = `<span class="text-gaming-accent font-bold text-lg">🎉 構成完了！</span><br>全てのパーツが揃いました。互換性にエラーが出ていないか確認しましょう。<br><span class="text-emerald-400 text-xs mt-2 block font-bold border-t border-gaming-700 pt-2">💡 【実作業の仕上げ】 全てのケーブルが繋がっているか確認し、ケースのフタを閉めて電源を入れ、OS(Windows等)をインストールすれば完成です！</span>`;
+            }
+
+            els.assemblyGuide.innerHTML = guideHtml;
+        }
+
+        // アプリケーション起動
+        document.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
