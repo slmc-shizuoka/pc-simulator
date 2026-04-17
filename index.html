@@ -1,815 +1,1853 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自作PC 組み立てシミュレーター | PC Builder</title>
-    <!-- Tailwind CSS (スタイリング用ユーティリティ) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Phosphor Icons (アイコン用) -->
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <!-- Three.js (3D描画用) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['"Noto Sans JP"', 'sans-serif'],
-                        tech: ['"Rajdhani"', 'sans-serif'],
-                    },
-                    colors: {
-                        gaming: {
-                            900: '#0a0a0c',
-                            800: '#14151a',
-                            700: '#1e2028',
-                            accent: '#10b981', // Emerald 500
-                            alert: '#ef4444',  // Red 500
-                            warn: '#f59e0b',   // Amber 500
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        /* カスタムスクロールバーの設定 */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #14151a; 
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #374151; 
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #10b981; 
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PC Assembly Lab — 3D自作PC組み立てシミュレーター</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --bg-grid: #0d1420;
+    --panel: #111821;
+    --panel-border: #1e2a3a;
+    --ink: #e6edf3;
+    --ink-dim: #8b9bb0;
+    --ink-muted: #5a6b80;
+    --accent: #5ee3ff;
+    --accent-dim: #2d7a8c;
+    --warning: #ffb454;
+    --success: #7fd962;
+    --danger: #ff6b6b;
+    --cable-pwr: #ffb454;
+    --cable-data: #5ee3ff;
+    --cable-fan: #ff6b9d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
 
-        /* アニメーション関連 */
-        .fade-in {
-            animation: fadeIn 0.3s ease-in-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
+  /* ===== Layout ===== */
+  #app {
+    position: fixed; inset: 0;
+    display: grid;
+    grid-template-columns: 320px 1fr 360px;
+    grid-template-rows: 56px 1fr 80px;
+    grid-template-areas:
+      "header header header"
+      "sidebar canvas detail"
+      "sidebar timeline detail";
+    gap: 1px;
+    background: var(--panel-border);
+    z-index: 1;
+  }
+
+  /* ===== Header ===== */
+  header {
+    grid-area: header;
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+  }
+  .logo {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+  }
+  .logo .brand {
+    color: var(--accent);
+    margin-right: 6px;
+  }
+  .breadcrumb {
+    font-size: 11px;
+    color: var(--ink-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+  .btn {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--ink-dim);
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn.primary {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+  .btn.primary:hover {
+    background: #fff;
+    border-color: #fff;
+  }
+  .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* ===== Sidebar (steps) ===== */
+  aside.sidebar {
+    grid-area: sidebar;
+    background: var(--panel);
+    overflow-y: auto;
+    padding: 16px 0;
+  }
+  .sidebar-title {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 0 20px 12px;
+    border-bottom: 1px solid var(--panel-border);
+    margin-bottom: 12px;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 0.12s;
+  }
+  .step:hover { background: rgba(94, 227, 255, 0.04); }
+  .step.current {
+    background: rgba(94, 227, 255, 0.08);
+    border-left-color: var(--accent);
+  }
+  .step.done {
+    opacity: 0.55;
+  }
+  .step-num {
+    font-size: 10px;
+    color: var(--ink-muted);
+    letter-spacing: 0.1em;
+  }
+  .step.current .step-num { color: var(--accent); }
+  .step.done .step-num { color: var(--success); }
+  .step-title {
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .step-title small {
+    display: block;
+    font-size: 10px;
+    color: var(--ink-muted);
+    margin-top: 2px;
+    letter-spacing: 0.05em;
+  }
+  .step-check {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--panel-border);
+    border-radius: 2px;
+    position: relative;
+  }
+  .step.done .step-check {
+    background: var(--success);
+    border-color: var(--success);
+  }
+  .step.done .step-check::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bg);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  /* ===== Canvas area ===== */
+  #canvas-wrap {
+    grid-area: canvas;
+    position: relative;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  #canvas-wrap canvas { display: block; }
+
+  /* HUD on canvas */
+  .hud {
+    position: absolute;
+    pointer-events: none;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  .hud-tl { top: 16px; left: 16px; }
+  .hud-tr { top: 16px; right: 16px; text-align: right; }
+  .hud-bl { bottom: 16px; left: 16px; }
+  .hud-corner {
+    color: var(--ink-muted);
+    text-transform: uppercase;
+  }
+  .hud-corner strong {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .hud .crosshair {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--accent);
+    margin-right: 6px;
+    vertical-align: middle;
+    position: relative;
+  }
+  .hud .crosshair::before,
+  .hud .crosshair::after {
+    content: '';
+    position: absolute;
+    background: var(--accent);
+  }
+  .hud .crosshair::before {
+    left: -3px; right: -3px; top: 50%; height: 1px;
+  }
+  .hud .crosshair::after {
+    top: -3px; bottom: -3px; left: 50%; width: 1px;
+  }
+
+  .step-banner {
+    position: absolute;
+    left: 50%;
+    top: 20px;
+    transform: translateX(-50%);
+    background: rgba(17, 24, 33, 0.92);
+    border: 1px solid var(--accent-dim);
+    padding: 10px 20px;
+    min-width: 420px;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+  }
+  .step-banner .tag {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .step-banner .title {
+    font-size: 14px;
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* ===== Timeline ===== */
+  #timeline {
+    grid-area: timeline;
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+  }
+  .tl-btn {
+    width: 36px; height: 36px;
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--ink-dim);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .tl-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .tl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .tl-track {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-grid);
+    position: relative;
+    border: 1px solid var(--panel-border);
+  }
+  .tl-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--accent);
+    transition: width 0.3s ease;
+  }
+  .tl-ticks {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: space-between;
+  }
+  .tl-tick {
+    width: 2px;
+    height: 100%;
+    background: var(--panel-border);
+  }
+  .tl-label {
+    font-size: 11px;
+    color: var(--ink-muted);
+    letter-spacing: 0.1em;
+    font-variant-numeric: tabular-nums;
+  }
+  .tl-label strong {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* ===== Detail panel ===== */
+  #detail {
+    grid-area: detail;
+    background: var(--panel);
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .detail-header {
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+  }
+  .detail-tag {
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .detail-title {
+    font-size: 18px;
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .detail-sub {
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-top: 4px;
+    letter-spacing: 0.05em;
+  }
+  .detail-section {
+    margin-bottom: 20px;
+  }
+  .detail-section h3 {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .detail-section p {
+    font-size: 12px;
+    color: var(--ink-dim);
+    line-height: 1.7;
+  }
+  .checklist {
+    list-style: none;
+  }
+  .checklist li {
+    padding: 6px 0 6px 20px;
+    position: relative;
+    font-size: 12px;
+    color: var(--ink-dim);
+    line-height: 1.6;
+  }
+  .checklist li::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+  }
+  .warn {
+    background: rgba(255, 180, 84, 0.08);
+    border-left: 2px solid var(--warning);
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    line-height: 1.6;
+  }
+  .warn strong {
+    color: var(--warning);
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .spec-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 12px;
+    font-size: 11px;
+  }
+  .spec-grid dt {
+    color: var(--ink-muted);
+    letter-spacing: 0.05em;
+  }
+  .spec-grid dd {
+    color: var(--ink);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ===== Controls legend ===== */
+  .legend {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    background: rgba(17, 24, 33, 0.85);
+    border: 1px solid var(--panel-border);
+    padding: 10px 12px;
+    font-size: 10px;
+    color: var(--ink-muted);
+    letter-spacing: 0.05em;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+  }
+  .legend div { margin: 2px 0; }
+  .legend kbd {
+    display: inline-block;
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    padding: 1px 5px;
+    margin-right: 6px;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 9px;
+  }
+
+  /* ===== View toggles ===== */
+  .view-toggles {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1px;
+    background: var(--panel-border);
+    margin-top: 60px;
+  }
+  .view-toggles button {
+    background: rgba(17, 24, 33, 0.9);
+    border: none;
+    color: var(--ink-dim);
+    padding: 6px 14px;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+  }
+  .view-toggles button.active {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  /* ===== Completion overlay ===== */
+  .complete-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 14, 20, 0.9);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+  }
+  .complete-overlay.visible { display: flex; }
+  .complete-card {
+    border: 1px solid var(--accent);
+    background: var(--panel);
+    padding: 40px 60px;
+    text-align: center;
+    position: relative;
+  }
+  .complete-card::before,
+  .complete-card::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    border: 1px solid var(--accent);
+  }
+  .complete-card::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .complete-card::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+  .complete-card h2 {
+    color: var(--accent);
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    margin-bottom: 8px;
+  }
+  .complete-card p {
+    font-size: 22px;
+    color: var(--ink);
+    margin-bottom: 20px;
+    letter-spacing: 0.05em;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--panel-border); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+  @media (max-width: 1100px) {
+    #app { grid-template-columns: 260px 1fr 280px; }
+    .step-banner { min-width: 320px; }
+  }
+</style>
 </head>
-<body class="bg-gaming-900 text-gray-200 min-h-screen flex flex-col">
+<body>
 
-    <!-- ヘッダー -->
-    <header class="bg-gaming-800 border-b border-gaming-700 py-4 px-6 sticky top-0 z-50 shadow-md">
-        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-                <i class="ph-fill ph-cpu text-3xl text-gaming-accent"></i>
-                <h1 class="text-2xl font-tech font-bold tracking-wider text-white">PC BUILDER <span class="text-sm font-sans text-gray-400 font-normal">シミュレーター</span></h1>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <div class="relative group">
-                    <button class="text-sm px-4 py-2 rounded bg-gaming-700 border border-gaming-600 hover:bg-gaming-accent hover:text-white transition-colors flex items-center gap-2 font-bold cursor-pointer">
-                        <i class="ph ph-magic-wand"></i> おすすめ構成
-                    </button>
-                    <!-- ドロップダウンメニュー (位置調整と隙間の解消) -->
-                    <div class="absolute right-0 top-full pt-2 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                        <div class="bg-gaming-800 border border-gray-700 rounded shadow-xl overflow-hidden">
-                            <button onclick="applyPreset('highEnd')" class="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold text-white border-b border-gray-700 cursor-pointer">ハイエンドゲーミング</button>
-                            <button onclick="applyPreset('costPerf')" class="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold text-white cursor-pointer">コスパ重視モデル</button>
-                        </div>
-                    </div>
-                </div>
-                <button id="reset-btn" class="text-sm px-4 py-2 rounded border border-gray-600 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 cursor-pointer">
-                    <i class="ph ph-arrow-counter-clockwise"></i> 構成をリセット
-                </button>
-            </div>
-        </div>
-    </header>
+<div id="app">
+  <!-- HEADER -->
+  <header>
+    <div class="logo"><span class="brand">◆</span>PC ASSEMBLY LAB</div>
+    <div class="breadcrumb">/ Build · Educational Simulator v1.0</div>
+    <div class="header-actions">
+      <button class="btn" id="btn-reset">⟲ リセット</button>
+      <button class="btn" id="btn-explode">⊞ 分解表示</button>
+      <button class="btn primary" id="btn-auto">▶ オート組立</button>
+    </div>
+  </header>
 
-    <!-- メインコンテンツ -->
-    <main class="flex-grow max-w-7xl mx-auto w-full p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- 左カラム：パーツ選択パネル -->
-        <section class="lg:col-span-7 flex flex-col gap-4 h-[calc(100vh-120px)]">
-            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-4 shadow-lg flex-grow flex flex-col overflow-hidden">
-                <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="ph ph-list-magnifying-glass text-gaming-accent"></i> パーツを選択</h2>
-                
-                <!-- カテゴリタブ -->
-                <div id="category-tabs" class="flex overflow-x-auto pb-2 mb-4 border-b border-gray-700 gap-2 flex-shrink-0">
-                    <!-- JSで動的に生成 -->
-                </div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-title">▸ ASSEMBLY SEQUENCE</div>
+    <div id="step-list"></div>
+  </aside>
 
-                <!-- カテゴリ解説と選び方のポイント (新機能) -->
-                <div id="category-info" class="bg-blue-900/20 border border-blue-800 p-3 rounded-lg mb-4 flex gap-3 items-start flex-shrink-0">
-                    <i class="ph-fill ph-info text-blue-400 text-xl mt-0.5 flex-shrink-0"></i>
-                    <div>
-                        <h3 id="cat-role" class="text-blue-100 font-bold text-sm mb-1">役割</h3>
-                        <p id="cat-tips" class="text-blue-300 text-xs leading-relaxed">選び方</p>
-                    </div>
-                </div>
-
-                <!-- パーツリスト表示エリア -->
-                <div id="parts-list" class="flex-grow overflow-y-auto pr-2 space-y-3">
-                    <!-- JSで動的に生成 -->
-                </div>
-            </div>
-        </section>
-
-        <!-- 右カラム：プレビュー・ステータスパネル -->
-        <section class="lg:col-span-5 flex flex-col gap-4 h-[calc(100vh-120px)] overflow-y-auto pb-10 lg:pb-0">
-            
-            <!-- ステータスダッシュボード -->
-            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-5 shadow-lg">
-                <!-- 消費電力ゲージ -->
-                <div class="mb-2 flex justify-between text-sm">
-                    <span class="text-gray-400 font-bold flex items-center gap-2"><i class="ph ph-lightning text-gaming-accent text-lg"></i> 推定消費電力 (TDP)</span>
-                    <span id="power-text" class="font-tech font-bold text-lg">0W / 0W</span>
-                </div>
-                <div class="w-full bg-gray-700 rounded-full h-2.5 mb-4 overflow-hidden relative">
-                    <div id="power-bar" class="bg-gaming-accent h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
-                </div>
-
-                <!-- 互換性チェック結果表示エリア -->
-                <div id="compatibility-alerts" class="space-y-2 empty:hidden">
-                    <!-- JSで動的に警告・エラーを生成 -->
-                </div>
-            </div>
-
-            <!-- 視覚的プレビュー (PCケース内部) -->
-            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-5 shadow-lg flex-grow flex flex-col">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-bold flex items-center gap-2"><i class="ph ph-cube text-gaming-accent"></i> 3D アセンブリビュー</h2>
-                    <span class="text-xs text-gray-400"><i class="ph ph-hand-grabbing"></i> ドラッグで回転・拡大</span>
-                </div>
-                
-                <div id="3d-container" class="flex-grow bg-gaming-900 rounded-lg border border-gray-800 relative overflow-hidden min-h-[300px] cursor-move shadow-inner">
-                    <!-- Three.js Canvas goes here -->
-                    <div id="3d-loading" class="absolute inset-0 flex items-center justify-center text-gaming-accent bg-gaming-900/80 z-10">
-                        <div class="flex flex-col items-center gap-2">
-                            <i class="ph ph-spinner animate-spin text-3xl"></i>
-                            <span class="text-sm font-bold">3Dエンジン起動中...</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 組み立てガイド (新機能) -->
-            <div class="bg-gaming-800 rounded-xl border border-gaming-700 p-5 shadow-lg relative overflow-hidden flex-shrink-0">
-                <div class="absolute top-0 left-0 w-1 h-full bg-gaming-accent"></div>
-                <h2 class="text-lg font-bold mb-3 flex items-center gap-2"><i class="ph ph-chalkboard-teacher text-gaming-accent"></i> 組み立て手順ガイド</h2>
-                <div id="assembly-guide" class="text-sm text-gray-300 leading-relaxed bg-gaming-900/50 p-4 rounded border border-gaming-700">
-                    <!-- JSで動的に生成 -->
-                </div>
-            </div>
-
-        </section>
-    </main>
-
-    <!-- 専用の確認モーダル -->
-    <div id="custom-modal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center opacity-0 transition-opacity duration-200">
-        <div class="bg-gaming-800 border border-gaming-700 rounded-xl p-6 max-w-sm w-full shadow-2xl transform scale-95 transition-transform duration-200" id="custom-modal-content">
-            <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2"><i class="ph-fill ph-warning-circle text-gaming-warn"></i> 確認</h3>
-            <p class="text-gray-300 text-sm mb-6" id="custom-modal-message">本当に実行しますか？</p>
-            <div class="flex justify-end gap-3">
-                <button id="custom-modal-cancel" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white font-bold text-sm transition-colors cursor-pointer">キャンセル</button>
-                <button id="custom-modal-ok" class="px-4 py-2 rounded bg-gaming-accent hover:bg-emerald-400 text-gaming-900 font-bold text-sm transition-colors shadow-lg shadow-emerald-900/50 cursor-pointer">実行する</button>
-            </div>
-        </div>
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <div class="step-banner" id="step-banner">
+      <div class="tag">STEP 01 / 15</div>
+      <div class="title">PCケースを準備する</div>
     </div>
 
-    <script>
-        /**
-         * 1. データベース (PCパーツのダミーデータ)
-         * - 後から追加しやすいようにカテゴリごとに配列で管理
-         * - 互換性チェック用のプロパティ(socket, formFactor, tdp等)を持たせる
-         */
-        const partsDatabase = {
-            cpu: [
-                { id: 'c1', name: 'Intel Core i9-14900K', desc: '最強クラスのゲーム＆クリエイター向けCPU', socket: 'LGA1700', tdp: 253, price: 95000 },
-                { id: 'c2', name: 'Intel Core i5-13400F', desc: 'コスパ抜群のミドルクラスCPU', socket: 'LGA1700', tdp: 65, price: 32000 },
-                { id: 'c3', name: 'AMD Ryzen 9 7950X3D', desc: 'ゲーム性能に特化したハイエンドCPU', socket: 'AM5', tdp: 120, price: 110000 },
-                { id: 'c4', name: 'AMD Ryzen 5 7600', desc: 'AM5プラットフォーム入門に最適', socket: 'AM5', tdp: 65, price: 35000 },
-            ],
-            motherboard: [
-                { id: 'm1', name: 'ASUS ROG MAXIMUS Z790 HERO', desc: 'Intel用ハイエンドマザー(DDR5対応)', socket: 'LGA1700', formFactor: 'ATX', memoryType: 'DDR5', price: 98000 },
-                { id: 'm2', name: 'MSI MAG B760M MORTAR', desc: 'Intel用コスパマザー(Micro-ATX, DDR4対応)', socket: 'LGA1700', formFactor: 'Micro-ATX', memoryType: 'DDR4', price: 24000 },
-                { id: 'm3', name: 'ASRock X670E Taichi', desc: 'AMD用究極の拡張性を持つマザーボード', socket: 'AM5', formFactor: 'E-ATX', memoryType: 'DDR5', price: 85000 },
-                { id: 'm4', name: 'GIGABYTE B650M DS3H', desc: 'AMD用スタンダードマザー(Micro-ATX)', socket: 'AM5', formFactor: 'Micro-ATX', memoryType: 'DDR5', price: 18000 },
-            ],
-            memory: [
-                { id: 'mem1', name: 'Corsair Vengeance RGB DDR5-6000 32GB (16GBx2)', type: 'DDR5', tdp: 10, price: 21000 },
-                { id: 'mem2', name: 'Crucial Pro DDR5-5600 32GB (16GBx2)', type: 'DDR5', tdp: 8, price: 16000 },
-                { id: 'mem3', name: 'G.Skill Trident Z RGB DDR4-3600 32GB (16GBx2)', type: 'DDR4', tdp: 8, price: 14000 },
-                { id: 'mem4', name: 'Silicon Power DDR4-3200 16GB (8GBx2)', type: 'DDR4', tdp: 5, price: 5500 },
-            ],
-            gpu: [
-                { id: 'g1', name: 'NVIDIA GeForce RTX 4090 24GB', desc: '現行最強グラボ。超巨大で大電力。', tdp: 450, length: 342, price: 320000 },
-                { id: 'g2', name: 'NVIDIA GeForce RTX 4070 SUPER 12GB', desc: 'WQHDゲームに最適なハイスペック', tdp: 220, length: 261, price: 110000 },
-                { id: 'g3', name: 'NVIDIA GeForce RTX 4060 8GB', desc: 'フルHD向けコンパクトグラボ', tdp: 115, length: 200, price: 52000 },
-                { id: 'g4', name: 'AMD Radeon RX 7900 XTX 24GB', desc: 'AMDのフラッグシップ。VRAM大容量。', tdp: 355, length: 287, price: 165000 },
-            ],
-            storage: [
-                { id: 's1', name: 'Samsung 990 PRO 2TB (M.2 NVMe Gen4)', type: 'M.2', tdp: 8, price: 26000 },
-                { id: 's2', name: 'WD Blue SN580 1TB (M.2 NVMe Gen4)', type: 'M.2', tdp: 5, price: 11000 },
-                { id: 's3', name: 'Crucial MX500 1TB (SATA SSD)', type: 'SATA', tdp: 5, price: 9500 },
-            ],
-            powerSupply: [
-                { id: 'p1', name: 'Corsair RM1000x (1000W 80PLUS Gold)', wattage: 1000, price: 25000 },
-                { id: 'p2', name: 'Thermaltake Toughpower 850W Gold', wattage: 850, price: 16000 },
-                { id: 'p3', name: '玄人志向 KRPW-BK650W/85+ (650W Bronze)', wattage: 650, price: 8500 },
-            ],
-            case: [
-                { id: 'cs1', name: 'NZXT H5 Flow', desc: '冷却性抜群の定番ATXケース', formFactor: ['ATX', 'Micro-ATX', 'Mini-ITX'], maxLengthGPU: 365, price: 13500 },
-                { id: 'cs2', name: 'Fractal Design Meshify 2 Mini', desc: '高品質なコンパクトケース', formFactor: ['Micro-ATX', 'Mini-ITX'], maxLengthGPU: 306, price: 18000 },
-                { id: 'cs3', name: 'Lian Li O11 Dynamic EVO', desc: '魅せるPCの最高峰', formFactor: ['E-ATX', 'ATX', 'Micro-ATX', 'Mini-ITX'], maxLengthGPU: 426, price: 28000 },
-            ]
-        };
+    <div class="view-toggles">
+      <button data-view="iso" class="active">ISO</button>
+      <button data-view="front">FRONT</button>
+      <button data-view="side">SIDE</button>
+      <button data-view="top">TOP</button>
+    </div>
 
-        // UI表示用のカテゴリメタデータ (役割と選び方の解説を追加)
-        const categoryMeta = [
-            { id: 'cpu', name: 'CPU', icon: 'ph-cpu', role: 'PCの「頭脳」。全体の処理速度を決定します。', tips: '用途に合わせて性能を選びます。IntelとAMDがあり、マザーボードの「ソケット」と一致させる必要があります。' },
-            { id: 'motherboard', name: 'マザーボード', icon: 'ph-motherboard', role: '全てのパーツを接続する「土台」。', tips: 'CPUのソケット規格に合わせるのが絶対条件。ケースに入るサイズ（ATX、Micro-ATXなど）かも重要です。' },
-            { id: 'memory', name: 'メモリ', icon: 'ph-memory', role: 'データを一時的に記憶する「作業机」。', tips: '容量が大きいほど複数のアプリを同時に快適に動かせます。マザーボードの対応規格（DDR4/DDR5）と合わせます。' },
-            { id: 'gpu', name: 'グラフィックボード', icon: 'ph-graphics-card', role: '映像処理の専用パーツ。ゲームや3D作業に必須。', tips: '非常に大きく、電力を多く消費します。PCケースに入る長さか、電源容量は足りているか確認しましょう。' },
-            { id: 'storage', name: 'ストレージ', icon: 'ph-hard-drive', role: 'OSやデータを長期間保存する「本棚」。', tips: '現在はマザーボードに直接挿す超高速な「M.2 SSD」が主流です。容量は1TB以上がおすすめです。' },
-            { id: 'powerSupply', name: '電源ユニット', icon: 'ph-plug', role: '各パーツに電力を供給する「心臓」。', tips: '全パーツの消費電力(TDP)の合計から、30%ほど余裕を持たせた容量(W)を選ぶと安定して動作します。' },
-            { id: 'case', name: 'PCケース', icon: 'ph-desktop-tower', role: '全てのパーツを収納する「箱」。', tips: 'マザーボードのサイズと、グラフィックボードの長さに対応しているか（物理的に入るか）を必ずチェックしましょう。' },
-        ];
+    <div class="hud hud-tl hud-corner">
+      <div><span class="crosshair"></span>CAMERA · <strong id="hud-cam">ORBIT</strong></div>
+    </div>
+    <div class="hud hud-tr hud-corner">
+      <div>PROGRESS · <strong id="hud-progress">0 / 15</strong></div>
+      <div style="margin-top:4px;">ZOOM · <strong id="hud-zoom">1.0x</strong></div>
+    </div>
+    <div class="hud hud-bl hud-corner">
+      <div>◇ MODE · <strong id="hud-mode">GUIDED</strong></div>
+    </div>
 
-        /**
-         * 2. アプリケーションの状態管理 (State)
-         */
-        const state = {
-            currentCategory: 'cpu', // 現在開いているタブ
-            selectedParts: {
-                cpu: null,
-                motherboard: null,
-                memory: null,
-                gpu: null,
-                storage: null,
-                powerSupply: null,
-                case: null
-            },
-            errors: [],   // 互換性エラー
-            warnings: []  // 警告（推奨環境から外れている等）
-        };
+    <div class="legend">
+      <div><kbd>LMB</kbd>回転</div>
+      <div><kbd>RMB</kbd>パン</div>
+      <div><kbd>Wheel</kbd>ズーム</div>
+      <div><kbd>←→</kbd>ステップ</div>
+    </div>
 
-        /**
-         * 3. DOM要素の取得
-         */
-        const els = {
-            tabsContainer: document.getElementById('category-tabs'),
-            catRole: document.getElementById('cat-role'),
-            catTips: document.getElementById('cat-tips'),
-            partsList: document.getElementById('parts-list'),
-            powerText: document.getElementById('power-text'),
-            powerBar: document.getElementById('power-bar'),
-            alertsContainer: document.getElementById('compatibility-alerts'),
-            resetBtn: document.getElementById('reset-btn'),
-            container3D: document.getElementById('3d-container'),
-            loading3D: document.getElementById('3d-loading'),
-            assemblyGuide: document.getElementById('assembly-guide')
-        };
+    <div class="complete-overlay" id="complete">
+      <div class="complete-card">
+        <h2>◆ BUILD COMPLETE</h2>
+        <p>組み立て完了</p>
+        <button class="btn primary" id="btn-restart">もう一度</button>
+      </div>
+    </div>
+  </div>
 
-        // UIブロッカー回避のための専用モーダル制御
-        const customModal = {
-            overlay: document.getElementById('custom-modal'),
-            content: document.getElementById('custom-modal-content'),
-            message: document.getElementById('custom-modal-message'),
-            okBtn: document.getElementById('custom-modal-ok'),
-            cancelBtn: document.getElementById('custom-modal-cancel'),
-            
-            show(msg, onConfirm) {
-                this.message.innerText = msg;
-                this.overlay.classList.remove('hidden');
-                
-                // アニメーションのため少し遅延させてクラス変更
-                requestAnimationFrame(() => {
-                    this.overlay.classList.remove('opacity-0');
-                    this.content.classList.remove('scale-95');
-                });
-                
-                const handleConfirm = () => {
-                    this.hide();
-                    onConfirm();
-                    cleanup();
-                };
-                
-                const handleCancel = () => {
-                    this.hide();
-                    cleanup();
-                };
-                
-                const cleanup = () => {
-                    this.okBtn.removeEventListener('click', handleConfirm);
-                    this.cancelBtn.removeEventListener('click', handleCancel);
-                };
-                
-                this.okBtn.addEventListener('click', handleConfirm);
-                this.cancelBtn.addEventListener('click', handleCancel);
-            },
-            
-            hide() {
-                this.overlay.classList.add('opacity-0');
-                this.content.classList.add('scale-95');
-                setTimeout(() => {
-                    this.overlay.classList.add('hidden');
-                }, 200);
-            }
-        };
+  <!-- DETAIL -->
+  <aside id="detail"></aside>
 
-        /**
-         * 4. 初期化処理
-         */
-        function init() {
-            init3D(); // 3Dエンジンの初期化
-            renderTabs();
-            renderPartsList();
-            updateDashboard();
-            
-            els.resetBtn.addEventListener('click', () => {
-                // confirm() の代わりにカスタムモーダルを使用
-                customModal.show('現在の構成をすべてリセットしますか？', () => {
-                    state.selectedParts = { cpu: null, motherboard: null, memory: null, gpu: null, storage: null, powerSupply: null, case: null };
-                    state.currentCategory = 'cpu';
-                    renderTabs();
-                    renderPartsList();
-                    updateDashboard();
-                });
-            });
-        }
+  <!-- TIMELINE -->
+  <div id="timeline">
+    <button class="tl-btn" id="tl-prev">◀</button>
+    <span class="tl-label">STEP <strong id="tl-current">01</strong> / 15</span>
+    <div class="tl-track">
+      <div class="tl-fill" id="tl-fill"></div>
+      <div class="tl-ticks" id="tl-ticks"></div>
+    </div>
+    <button class="tl-btn" id="tl-next">▶</button>
+  </div>
+</div>
 
-        /**
-         * 5. UIレンダリング関数
-         */
-        // カテゴリタブの描画
-        function renderTabs() {
-            els.tabsContainer.innerHTML = '';
-            categoryMeta.forEach(cat => {
-                const isSelected = state.currentCategory === cat.id;
-                const hasPart = state.selectedParts[cat.id] !== null;
-                
-                const btn = document.createElement('button');
-                btn.className = `whitespace-nowrap px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors ${
-                    isSelected 
-                        ? 'bg-gaming-accent text-white shadow-lg shadow-emerald-900/50' 
-                        : 'bg-gaming-700 text-gray-400 hover:bg-gaming-600 hover:text-gray-200'
-                }`;
-                
-                // パーツ選択済みの場合はチェックマークを表示
-                const checkIcon = hasPart ? `<i class="ph-fill ph-check-circle text-white"></i>` : '';
-                
-                btn.innerHTML = `<i class="ph ${cat.icon} text-lg"></i> ${cat.name} ${checkIcon}`;
-                btn.addEventListener('click', () => {
-                    state.currentCategory = cat.id;
-                    renderTabs();
-                    renderPartsList();
-                });
-                els.tabsContainer.appendChild(btn);
+<!-- Three.js via CDN -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js"
+  }
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-                // 選択中のタブに合わせて解説テキストを更新
-                if(isSelected) {
-                    els.catRole.innerHTML = `役割：<span class="text-blue-100">${cat.role}</span>`;
-                    els.catTips.innerText = `💡 選び方のコツ：${cat.tips}`;
-                }
-            });
-        }
+<script>
+/* ============================================================
+   PC ASSEMBLY LAB — 3D Educational Simulator
+   単一HTML / Three.js r128 / 非エンジニア向けバイブコーディング
+   ============================================================ */
 
-        // 選択中カテゴリのパーツリスト描画
-        function renderPartsList() {
-            els.partsList.innerHTML = '';
-            const parts = partsDatabase[state.currentCategory];
-            const currentSelectedId = state.selectedParts[state.currentCategory]?.id;
+// ===== STEP DATA =====
+const STEPS = [
+  {
+    id: 'case',
+    title: 'PCケースの準備',
+    subtitle: 'Mid Tower · ATX対応',
+    tag: 'STEP 01',
+    cat: 'CHASSIS',
+    desc: 'まずはPCケースを用意します。側面パネルを外した状態で机に寝かせるのが基本姿勢。ここに全てのパーツが収まります。',
+    checks: ['側面パネルを外す', '付属品（ネジ袋）の確認', '静電気対策（金属部に触れる）'],
+    warn: null,
+    spec: { 'Form Factor': 'Mid Tower', 'Size': '210×450×460mm', 'Weight': '約8kg' },
+  },
+  {
+    id: 'standoff',
+    title: 'スタンドオフ取付',
+    subtitle: 'マザーボード用スペーサー',
+    tag: 'STEP 02',
+    cat: 'CHASSIS',
+    desc: 'マザーボードをケースから浮かせるための六角スペーサー（スタンドオフ）を取り付けます。これがないと基板の裏面がケースと接触してショートします。',
+    checks: ['ATX規格の9箇所に装着', '手で仮締め→工具で本締め', '余分な位置には取り付けない'],
+    warn: { t: '注意', d: 'スタンドオフの位置はマザーボード規格で決まっています。ATX/Micro-ATX/Mini-ITXで異なるので要確認。' },
+    spec: { 'Type': 'M3六角 × 9個', 'Height': '6mm' },
+  },
+  {
+    id: 'mb',
+    title: 'マザーボード設置',
+    subtitle: 'ATX · LGA1700',
+    tag: 'STEP 03',
+    cat: 'CORE',
+    desc: 'ケースにI/Oパネル（背面端子カバー）をはめてから、マザーボードを載せます。スタンドオフの位置にネジ穴を合わせて固定。',
+    checks: ['I/Oシールドを先にケースへ装着', 'マザーを斜めに入れてI/Oに合わせる', '9本のネジで対角線順に締める'],
+    warn: { t: '静電気NG', d: '基板を扱う前に必ず金属に触れて放電してください。静電気は一瞬で基板を壊します。' },
+    spec: { 'Chipset': 'Z790', 'Socket': 'LGA1700', 'Memory Slots': '4 × DDR5' },
+  },
+  {
+    id: 'cpu',
+    title: 'CPU装着',
+    subtitle: 'Intel Core i7 / LGA1700',
+    tag: 'STEP 04',
+    cat: 'CORE',
+    desc: 'CPUソケットのレバーを上げ、保護カバーを外してCPUを置きます。CPUの三角マーク（金印）とソケットの三角マークを合わせるのが鉄則。',
+    checks: ['CPUの向き（△マーク）を合わせる', '垂直にそっと落とす', 'レバーを倒して固定'],
+    warn: { t: '最重要', d: 'ピンを絶対に曲げないこと。マザー側・CPU側どちらのピンも触れたら終わりです。' },
+    spec: { 'Cores': '16 (8P + 8E)', 'TDP': '125W', 'Socket': 'LGA1700' },
+  },
+  {
+    id: 'cooler',
+    title: 'CPUクーラー取付',
+    subtitle: '空冷ヒートシンク + ファン',
+    tag: 'STEP 05',
+    cat: 'COOLING',
+    desc: 'CPUの上に熱伝導グリスを米粒大1つ塗り、クーラーを載せて固定します。ファンの電源ケーブルをマザーボードの「CPU_FAN」コネクタに接続。',
+    checks: ['グリスは米粒大1粒で十分', '対角線順に均等に締める', 'CPU_FANコネクタへ接続'],
+    warn: { t: 'グリス過多NG', d: '塗りすぎると逆に冷えません。圧着で自然に広がります。' },
+    spec: { 'Type': '空冷 · 120mm', 'TDP Rating': '180W', 'Height': '158mm' },
+  },
+  {
+    id: 'ram1',
+    title: 'メモリ装着 (DIMM A2)',
+    subtitle: 'DDR5-5600 16GB',
+    tag: 'STEP 06',
+    cat: 'CORE',
+    desc: '1枚目のメモリを装着します。スロットの両端のツメを開き、メモリの切り欠きを合わせて垂直に押し込みます。カチッと音がして両端のツメが閉じればOK。',
+    checks: ['スロットは「A2」を優先', '切り欠きの向きを確認', '両端を同時に押す'],
+    warn: null,
+    spec: { 'Type': 'DDR5-5600', 'Capacity': '16GB', 'Slot': 'DIMM_A2' },
+  },
+  {
+    id: 'ram2',
+    title: 'メモリ装着 (DIMM B2)',
+    subtitle: 'DDR5-5600 16GB ×2枚目',
+    tag: 'STEP 07',
+    cat: 'CORE',
+    desc: '2枚目のメモリを装着してデュアルチャネル化します。A2・B2の組み合わせが推奨（マザー説明書に記載）。これで帯域が2倍になります。',
+    checks: ['スロットは「B2」', 'A2と同じ向き', '両端のツメが閉じるのを確認'],
+    warn: { t: 'Tips', d: '同じ型番・同じ容量のペアで使うこと。混在させると性能が落ちます。' },
+    spec: { 'Total': '32GB (16GB × 2)', 'Mode': 'Dual Channel' },
+  },
+  {
+    id: 'm2',
+    title: 'M.2 SSD装着',
+    subtitle: 'NVMe PCIe 4.0 · 1TB',
+    tag: 'STEP 08',
+    cat: 'STORAGE',
+    desc: 'マザーボードのM.2スロットに挿します。30度くらいの角度で差し込み、ネジで止めるだけ。OSを入れるメインドライブになります。',
+    checks: ['ヒートシンクを外す', '30度で挿入→寝かせる', '1本のネジで固定'],
+    warn: null,
+    spec: { 'Type': 'NVMe Gen4 x4', 'Capacity': '1TB', 'Speed': '7000MB/s' },
+  },
+  {
+    id: 'gpu',
+    title: 'グラフィックカード装着',
+    subtitle: 'PCIe 5.0 x16',
+    tag: 'STEP 09',
+    cat: 'EXPANSION',
+    desc: 'PCIeスロットの一番上（CPU直結）にGPUを装着します。ケース背面のスロットカバーを2枚外してから、カチッと音がするまで押し込む。',
+    checks: ['背面スロットカバーを外す', 'スロットのツメを開く', 'ネジで2点固定'],
+    warn: { t: '重量注意', d: '最近のGPUは重く、たわみます。サポートステーの併用を推奨。' },
+    spec: { 'Interface': 'PCIe 5.0 x16', 'Length': '330mm', 'Power': '8pin × 2' },
+  },
+  {
+    id: 'psu',
+    title: '電源ユニット設置',
+    subtitle: 'ATX · 850W 80+ Gold',
+    tag: 'STEP 10',
+    cat: 'POWER',
+    desc: 'ケース下部の電源スペースに電源ユニットを入れます。ファンを下向き（底面吸気）にして、背面から4本のネジで固定。',
+    checks: ['ファンは下向きが基本', 'ケーブルは先に整理', '背面4本のネジで固定'],
+    warn: null,
+    spec: { 'Wattage': '850W', 'Efficiency': '80+ Gold', 'Type': 'Full Modular' },
+  },
+  {
+    id: 'hdd',
+    title: 'ストレージ追加',
+    subtitle: '3.5" HDD · 4TB',
+    tag: 'STEP 11',
+    cat: 'STORAGE',
+    desc: 'データ保存用のHDDをストレージベイに固定します。ツールレスなら金具で挟むだけ。後でSATAケーブルと電源を接続します。',
+    checks: ['ストレージベイへ挿入', '防振ゴムを活用', 'レールまたはネジで固定'],
+    warn: null,
+    spec: { 'Type': '3.5" SATA HDD', 'Capacity': '4TB', 'RPM': '7200' },
+  },
+  {
+    id: 'fan_front',
+    title: '前面ケースファン',
+    subtitle: '吸気 · 140mm',
+    tag: 'STEP 12',
+    cat: 'COOLING',
+    desc: 'ケース前面から冷たい空気を取り込む吸気ファン。矢印マークが「ケース内側」を向くように取り付けます。',
+    checks: ['矢印=風の向きを確認', 'ケース内側に向ける', 'SYS_FANコネクタへ接続'],
+    warn: null,
+    spec: { 'Size': '140mm', 'Direction': 'Intake', 'RPM': '500-1500' },
+  },
+  {
+    id: 'fan_rear',
+    title: '背面ケースファン',
+    subtitle: '排気 · 120mm',
+    tag: 'STEP 13',
+    cat: 'COOLING',
+    desc: 'ケース背面から熱い空気を外に出す排気ファン。矢印が「ケース外側」を向くように。前面吸気＋背面排気でエアフローの基本が完成。',
+    checks: ['矢印=ケース外側', '前面吸気とバランスを取る', 'SYS_FANコネクタへ接続'],
+    warn: { t: 'エアフロー', d: '吸気>排気（正圧）にすると埃が減ります。逆だと隙間から埃を吸い込みます。' },
+    spec: { 'Size': '120mm', 'Direction': 'Exhaust', 'RPM': '800-1800' },
+  },
+  {
+    id: 'cables_power',
+    title: '電源ケーブル配線',
+    subtitle: 'ATX24 + EPS8 + PCIe8×2',
+    tag: 'STEP 14',
+    cat: 'CABLING',
+    desc: '電源から主要な電源ケーブルをマザーボードとGPUに配線します。経路は黄色のラインで表示。裏配線スペースを使って表側をスッキリ保つのがコツ。',
+    checks: ['ATX24pin → マザー右側', 'EPS8pin(CPU補助) → マザー左上', 'PCIe8pin×2 → GPU'],
+    warn: { t: '奥まで挿す', d: 'ツメがカチッと鳴るまで。抜けかけは起動不良の原因です。' },
+    spec: { 'ATX Main': '24pin', 'CPU EPS': '8pin', 'PCIe': '8pin × 2' },
+  },
+  {
+    id: 'cables_data',
+    title: 'データ・ファン配線',
+    subtitle: 'SATA + Front Panel + Fan',
+    tag: 'STEP 15',
+    cat: 'CABLING',
+    desc: '最後にSATAデータ、フロントパネル（電源ボタン等）、ファンケーブルを接続します。水色＝データ、ピンク＝ファン。これで全工程完了です。',
+    checks: ['SATA: HDD → マザー', 'フロントパネル: 電源/リセット/LED', 'ファン: SYS_FAN1/2'],
+    warn: { t: '極性注意', d: 'フロントパネルのLEDは＋/−があります。説明書を必ず参照してください。' },
+    spec: { 'SATA Data': '1本', 'Front Panel': '5本', 'Fan': '3本' },
+  },
+];
 
-            parts.forEach(part => {
-                const isSelected = currentSelectedId === part.id;
-                
-                // 互換性フィルター機能
-                const compatibility = checkPartCompatibility(part, state.currentCategory);
-                const isCompatible = compatibility.valid;
-                const disableBtn = !isCompatible && !isSelected; // すでに選択されている場合は無効化しない
+// ============================================================
+// THREE.JS SETUP
+// ============================================================
+const THREE = window.THREE;
+const canvasWrap = document.getElementById('canvas-wrap');
 
-                const card = document.createElement('div');
-                card.className = `fade-in p-4 rounded-lg border-2 transition-all ${
-                    isSelected 
-                        ? 'bg-gaming-700/80 border-gaming-accent shadow-[0_0_15px_rgba(16,185,129,0.2)]' 
-                        : (disableBtn ? 'bg-gaming-900 border-red-900/50 opacity-60' : 'bg-gaming-800 border-gaming-700 hover:border-gray-500')
-                } flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center`;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e14);
+scene.fog = new THREE.Fog(0x0a0e14, 30, 80);
 
-                // パーツ詳細情報の生成（カテゴリによって表示するスペックを変える）
-                let specsHtml = '';
-                if (state.currentCategory === 'cpu') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">ソケット: ${part.socket}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">TDP: ${part.tdp}W</span>`;
-                if (state.currentCategory === 'motherboard') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">ソケット: ${part.socket}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">サイズ: ${part.formFactor}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">メモリ: ${part.memoryType}</span>`;
-                if (state.currentCategory === 'memory') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">規格: ${part.type}</span>`;
-                if (state.currentCategory === 'gpu') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">長さ: ${part.length}mm</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">TDP: ${part.tdp}W</span>`;
-                if (state.currentCategory === 'powerSupply') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">容量: ${part.wattage}W</span>`;
-                if (state.currentCategory === 'case') specsHtml = `<span class="bg-gray-700 px-2 py-1 rounded text-xs">対応MB: ${part.formFactor.join(', ')}</span> <span class="bg-gray-700 px-2 py-1 rounded text-xs">GPU最大長: ${part.maxLengthGPU}mm</span>`;
+const camera = new THREE.PerspectiveCamera(
+  45,
+  canvasWrap.clientWidth / canvasWrap.clientHeight,
+  0.1, 500
+);
+const DEFAULT_CAM = { x: 18, y: 14, z: 22 };
+camera.position.set(DEFAULT_CAM.x, DEFAULT_CAM.y, DEFAULT_CAM.z);
 
-                card.innerHTML = `
-                    <div class="flex-grow">
-                        <div class="flex items-center gap-2 mb-1">
-                            <h3 class="font-bold text-lg text-white">${part.name}</h3>
-                            ${!isCompatible ? `<span class="bg-red-900/80 text-red-200 text-[10px] px-2 py-0.5 rounded border border-red-700 font-bold whitespace-nowrap">${compatibility.reason}</span>` : ''}
-                        </div>
-                        ${part.desc ? `<p class="text-xs text-gray-400 mb-2">${part.desc}</p>` : ''}
-                        <div class="flex flex-wrap gap-2 mt-2">
-                            ${specsHtml}
-                        </div>
-                    </div>
-                    <div class="flex flex-col items-end gap-2 w-full sm:w-auto">
-                        ${isSelected 
-                            ? `<button class="w-full sm:w-auto px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold text-sm transition-colors" onclick="removePart('${state.currentCategory}')">選択解除</button>`
-                            : `<button class="w-full sm:w-auto px-6 py-2 rounded font-bold text-sm transition-colors shadow-lg ${disableBtn ? 'bg-gray-800 text-gray-500 cursor-not-allowed shadow-none border border-gray-700' : 'bg-gaming-accent hover:bg-emerald-400 text-gaming-900 shadow-emerald-900/50'}" onclick="selectPart('${state.currentCategory}', '${part.id}')" ${disableBtn ? 'disabled' : ''}>選択する</button>`
-                        }
-                    </div>
-                `;
-                els.partsList.appendChild(card);
-            });
-            
-            if (parts.length === 0) {
-                els.partsList.innerHTML = `<p class="text-gray-500 p-4">このカテゴリのパーツデータがありません。</p>`;
-            }
-        }
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(canvasWrap.clientWidth, canvasWrap.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+canvasWrap.appendChild(renderer.domElement);
 
-        /**
-         * 6. アクション関数 (パーツの選択・解除)
-         */
-        window.selectPart = function(category, partId) {
-            const part = partsDatabase[category].find(p => p.id === partId);
-            state.selectedParts[category] = part;
-            
-            // 次のカテゴリへ自動遷移する親切設計
-            const currentIndex = categoryMeta.findIndex(c => c.id === category);
-            if (currentIndex < categoryMeta.length - 1) {
-                state.currentCategory = categoryMeta[currentIndex + 1].id;
-                renderTabs();
-            }
-            
-            renderPartsList();
-            updateDashboard();
-        };
+// ===== Lighting =====
+const ambient = new THREE.AmbientLight(0x4a5568, 0.6);
+scene.add(ambient);
 
-        window.removePart = function(category) {
-            state.selectedParts[category] = null;
-            renderPartsList();
-            updateDashboard();
-        };
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+keyLight.position.set(10, 20, 10);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.width = 2048;
+keyLight.shadow.mapSize.height = 2048;
+keyLight.shadow.camera.left = -20;
+keyLight.shadow.camera.right = 20;
+keyLight.shadow.camera.top = 20;
+keyLight.shadow.camera.bottom = -20;
+scene.add(keyLight);
 
-        // 新機能: 個別パーツのスマート互換性チェック（一覧でのグレーアウト用）
-        function checkPartCompatibility(part, category) {
-            const current = state.selectedParts;
-            
-            if (category === 'cpu' && current.motherboard) {
-                if (part.socket !== current.motherboard.socket) return { valid: false, reason: 'マザーボードとソケットが不適合' };
-            }
-            if (category === 'motherboard') {
-                if (current.cpu && part.socket !== current.cpu.socket) return { valid: false, reason: 'CPUとソケットが不適合' };
-                if (current.memory && part.memoryType !== current.memory.type) return { valid: false, reason: 'メモリ規格が不適合' };
-                if (current.case && !current.case.formFactor.includes(part.formFactor)) return { valid: false, reason: 'ケースに収まらないサイズ' };
-            }
-            if (category === 'memory' && current.motherboard) {
-                if (part.type !== current.motherboard.memoryType) return { valid: false, reason: 'マザーボード非対応規格' };
-            }
-            if (category === 'gpu' && current.case) {
-                if (part.length > current.case.maxLengthGPU) return { valid: false, reason: 'ケースに収まらない長さ' };
-            }
-            if (category === 'case') {
-                if (current.motherboard && !part.formFactor.includes(current.motherboard.formFactor)) return { valid: false, reason: 'マザーボードが入らない' };
-                if (current.gpu && part.maxLengthGPU < current.gpu.length) return { valid: false, reason: 'グラボが入らない' };
-            }
-            
-            return { valid: true };
-        }
+const rimLight = new THREE.DirectionalLight(0x5ee3ff, 0.4);
+rimLight.position.set(-10, 5, -10);
+scene.add(rimLight);
 
-        // 新機能: おすすめ構成の自動適用
-        window.applyPreset = function(presetType) {
-            // confirm() の代わりにカスタムモーダルを使用
-            customModal.show('現在の構成を上書きしてプリセットを適用しますか？', () => {
-                if (presetType === 'highEnd') {
-                    state.selectedParts = {
-                        cpu: partsDatabase.cpu.find(p => p.id === 'c1'),
-                        motherboard: partsDatabase.motherboard.find(p => p.id === 'm1'),
-                        memory: partsDatabase.memory.find(p => p.id === 'mem1'),
-                        gpu: partsDatabase.gpu.find(p => p.id === 'g1'),
-                        storage: partsDatabase.storage.find(p => p.id === 's1'),
-                        powerSupply: partsDatabase.powerSupply.find(p => p.id === 'p1'),
-                        case: partsDatabase.case.find(p => p.id === 'cs3')
-                    };
-                } else if (presetType === 'costPerf') {
-                    state.selectedParts = {
-                        cpu: partsDatabase.cpu.find(p => p.id === 'c2'),
-                        motherboard: partsDatabase.motherboard.find(p => p.id === 'm2'),
-                        memory: partsDatabase.memory.find(p => p.id === 'mem4'),
-                        gpu: partsDatabase.gpu.find(p => p.id === 'g3'),
-                        storage: partsDatabase.storage.find(p => p.id === 's2'),
-                        powerSupply: partsDatabase.powerSupply.find(p => p.id === 'p3'),
-                        case: partsDatabase.case.find(p => p.id === 'cs1')
-                    };
-                }
-                
-                state.currentCategory = 'cpu';
-                renderTabs();
-                renderPartsList();
-                updateDashboard();
-            });
-        };
+const fillLight = new THREE.DirectionalLight(0xffb454, 0.15);
+fillLight.position.set(5, -5, 5);
+scene.add(fillLight);
 
-        /**
-         * 7. 互換性チェックロジックと計算
-         */
-        function evaluateCompatibility() {
-            state.errors = [];
-            state.warnings = [];
-            
-            const { cpu, motherboard, memory, gpu, powerSupply, case: pcCase } = state.selectedParts;
+// ===== Ground grid =====
+const gridHelper = new THREE.GridHelper(60, 60, 0x1e2a3a, 0x141c28);
+gridHelper.position.y = -6;
+scene.add(gridHelper);
 
-            // 1. CPUとマザーボードのソケット互換性
-            if (cpu && motherboard) {
-                if (cpu.socket !== motherboard.socket) {
-                    state.errors.push(`<b>ソケット不適合:</b> 選択したCPU(${cpu.socket})とマザーボード(${motherboard.socket})は物理的に接続できません。`);
-                }
-            }
+// Ground fade plane
+const groundGeo = new THREE.PlaneGeometry(60, 60);
+const groundMat = new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.7 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -6.01;
+ground.receiveShadow = true;
+scene.add(ground);
 
-            // 2. マザーボードとメモリの規格互換性
-            if (motherboard && memory) {
-                if (motherboard.memoryType !== memory.type) {
-                    state.errors.push(`<b>メモリ規格不適合:</b> マザーボード(${motherboard.memoryType}対応)に${memory.type}メモリは挿入できません。`);
-                }
-            }
+// ============================================================
+// MATERIALS (共通マテリアル / 各パーツで使い回して軽量化)
+// ============================================================
+const MAT = {
+  case: new THREE.MeshStandardMaterial({ color: 0x1a2230, metalness: 0.6, roughness: 0.4 }),
+  caseEdge: new THREE.MeshStandardMaterial({ color: 0x5ee3ff, emissive: 0x1a3a4a, emissiveIntensity: 0.4 }),
+  mb: new THREE.MeshStandardMaterial({ color: 0x0f3a2e, metalness: 0.3, roughness: 0.7 }),
+  pcb: new THREE.MeshStandardMaterial({ color: 0x0a4a3a, metalness: 0.2, roughness: 0.8 }),
+  cpu: new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.9, roughness: 0.2 }),
+  cpuBottom: new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.3, roughness: 0.6 }),
+  heatsink: new THREE.MeshStandardMaterial({ color: 0xa0a8b0, metalness: 0.8, roughness: 0.3 }),
+  fan: new THREE.MeshStandardMaterial({ color: 0x1a1f2a, metalness: 0.2, roughness: 0.8 }),
+  fanBlade: new THREE.MeshStandardMaterial({ color: 0x2a3242, metalness: 0.4, roughness: 0.5, transparent: true, opacity: 0.9 }),
+  ram: new THREE.MeshStandardMaterial({ color: 0x0a6a4a, metalness: 0.4, roughness: 0.6 }),
+  ramHeat: new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.7, roughness: 0.4 }),
+  gpu: new THREE.MeshStandardMaterial({ color: 0x1a1a22, metalness: 0.7, roughness: 0.3 }),
+  gpuAccent: new THREE.MeshStandardMaterial({ color: 0x5ee3ff, emissive: 0x5ee3ff, emissiveIntensity: 0.5 }),
+  psu: new THREE.MeshStandardMaterial({ color: 0x0f1420, metalness: 0.8, roughness: 0.2 }),
+  standoff: new THREE.MeshStandardMaterial({ color: 0xffb454, metalness: 0.9, roughness: 0.2 }),
+  m2: new THREE.MeshStandardMaterial({ color: 0x2a3040, metalness: 0.5, roughness: 0.4 }),
+  hdd: new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.7, roughness: 0.3 }),
+  highlight: new THREE.MeshBasicMaterial({ color: 0x5ee3ff, transparent: true, opacity: 0.15, side: THREE.DoubleSide }),
+};
 
-            // 3. マザーボードとケースのサイズ互換性
-            if (motherboard && pcCase) {
-                if (!pcCase.formFactor.includes(motherboard.formFactor)) {
-                    state.errors.push(`<b>サイズ不適合:</b> ケース(${pcCase.name})にマザーボード(${motherboard.formFactor})は大きすぎて入りません。`);
-                }
-            }
+// ============================================================
+// PART BUILDERS — 各パーツをメッシュグループとして作成
+// ============================================================
 
-            // 4. GPUの長さとケースの干渉チェック
-            if (gpu && pcCase) {
-                if (gpu.length > pcCase.maxLengthGPU) {
-                    state.errors.push(`<b>GPUサイズ超過:</b> グラフィックボードが長すぎます(GPU:${gpu.length}mm > ケース限界:${pcCase.maxLengthGPU}mm)。ケースに収まりません。`);
-                } else if (gpu.length > pcCase.maxLengthGPU - 15) {
-                    state.warnings.push(`<b>GPUスペース注意:</b> グラボのクリアランスがギリギリです。配線が困難な可能性があります。`);
-                }
-            }
+// ── 座標系: Y=上, X=幅, Z=奥行き。
+// ── ケースはATX想定で、以下のサイズ感にスケール。
+const SIZE = {
+  case: { w: 8, h: 18, d: 16 },       // ケース内寸イメージ
+  mb:   { w: 10, h: 0.3, d: 11 },     // マザー（床に寝かせて配置）
+};
 
-            // 5. 消費電力と電源容量のチェック
-            let totalTdp = 0;
-            if(cpu) totalTdp += cpu.tdp;
-            if(gpu) totalTdp += gpu.tdp;
-            if(memory) totalTdp += memory.tdp;
-            if(state.selectedParts.storage) totalTdp += state.selectedParts.storage.tdp;
-            // マザーボードやファンなどの基本消費電力として+50Wを見込む
-            if(motherboard) totalTdp += 50;
+function createCase() {
+  const g = new THREE.Group();
+  const { w, h, d } = SIZE.case;
 
-            if (powerSupply) {
-                const recommendedWattage = totalTdp * 1.3; // 30%の余裕を持たせるのが定石
-                if (totalTdp > powerSupply.wattage) {
-                    state.errors.push(`<b>電源容量不足:</b> システムの最大消費電力(${totalTdp}W)が電源容量(${powerSupply.wattage}W)を超えています。システムが落ちます。`);
-                } else if (recommendedWattage > powerSupply.wattage) {
-                    state.warnings.push(`<b>電源容量の余裕少:</b> 推奨電源容量(約${Math.ceil(recommendedWattage)}W)に対して現在の電源(${powerSupply.wattage}W)はギリギリです。ワンランク上の電源を推奨します。`);
-                }
-            }
+  // 底
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, d), MAT.case);
+  base.position.y = -h / 2 + 0.15;
+  base.receiveShadow = true;
+  g.add(base);
 
-            return totalTdp;
-        }
+  // 背面
+  const back = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.3), MAT.case);
+  back.position.z = -d / 2 + 0.15;
+  back.castShadow = true; back.receiveShadow = true;
+  g.add(back);
 
-        /**
-         * 8. ダッシュボードと視覚化の更新
-         */
-        function updateDashboard() {
-            // 互換性チェック実行
-            const totalTdp = evaluateCompatibility();
+  // 天面
+  const top = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, d), MAT.case);
+  top.position.y = h / 2 - 0.15;
+  top.receiveShadow = true;
+  g.add(top);
 
-            // 電力表示更新
-            const psuCapacity = state.selectedParts.powerSupply ? state.selectedParts.powerSupply.wattage : 0;
-            els.powerText.innerText = `${totalTdp}W / ${psuCapacity ? psuCapacity + 'W' : '未選択'}`;
-            
-            let powerPercent = 0;
-            if (psuCapacity > 0) {
-                powerPercent = Math.min((totalTdp / psuCapacity) * 100, 100);
-            } else if (totalTdp > 0) {
-                powerPercent = 100; // PSU未選択で電力を消費している場合はバーを振り切らせる
-            }
-            
-            els.powerBar.style.width = `${powerPercent}%`;
-            // 容量に応じたバーの色変更
-            if (powerPercent > 90) els.powerBar.className = "h-2.5 rounded-full transition-all duration-500 bg-gaming-alert";
-            else if (powerPercent > 70) els.powerBar.className = "h-2.5 rounded-full transition-all duration-500 bg-gaming-warn";
-            else els.powerBar.className = "h-2.5 rounded-full transition-all duration-500 bg-gaming-accent";
+  // 前面（一部メッシュ風の穴あき表現）
+  const front = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.2), MAT.case);
+  front.position.z = d / 2 - 0.1;
+  front.castShadow = true;
+  g.add(front);
 
-            // アラートの描画
-            els.alertsContainer.innerHTML = '';
-            
-            // 全くパーツが選ばれていない時のガイド
-            if (Object.values(state.selectedParts).every(p => p === null)) {
-                els.alertsContainer.innerHTML = `
-                    <div class="bg-blue-900/30 border border-blue-700 text-blue-300 p-3 rounded text-sm flex gap-2 items-start fade-in">
-                        <i class="ph ph-info mt-0.5 text-lg text-blue-400"></i>
-                        <div><b>Tip:</b> まずはPCの頭脳となる「CPU」から選び始めるのがおすすめです！</div>
-                    </div>
-                `;
-            }
+  // 左サイド（ガラスパネル風・半透明）
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x0a1018, transparent: true, opacity: 0.15,
+    metalness: 0, roughness: 0.1, transmission: 0.8
+  });
+  const leftSide = new THREE.Mesh(new THREE.BoxGeometry(0.1, h - 0.6, d - 0.6), glassMat);
+  leftSide.position.x = -w / 2 + 0.05;
+  g.add(leftSide);
 
-            state.errors.forEach(err => {
-                const div = document.createElement('div');
-                div.className = "bg-gaming-alert/20 border border-gaming-alert text-red-200 p-3 rounded text-sm flex gap-2 items-start fade-in";
-                div.innerHTML = `<i class="ph-fill ph-warning-circle mt-0.5 text-lg text-gaming-alert"></i><div>${err}</div>`;
-                els.alertsContainer.appendChild(div);
-            });
-            
-            state.warnings.forEach(warn => {
-                const div = document.createElement('div');
-                div.className = "bg-gaming-warn/20 border border-gaming-warn text-yellow-100 p-3 rounded text-sm flex gap-2 items-start fade-in";
-                div.innerHTML = `<i class="ph-fill ph-warning mt-0.5 text-lg text-gaming-warn"></i><div>${warn}</div>`;
-                els.alertsContainer.appendChild(div);
-            });
+  // エッジライン（青のネオン）
+  const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d));
+  const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x5ee3ff, transparent: true, opacity: 0.6 }));
+  g.add(line);
 
-            // 視覚的プレビューの更新
-            updateVisualizer();
+  g.userData = { name: 'PCケース' };
+  return g;
+}
 
-            // 組み立てガイドの更新
-            updateAssemblyGuide();
-        }
+function createStandoffs() {
+  const g = new THREE.Group();
+  // MBと同サイズの9点グリッドに配置（簡略化）
+  const mbW = SIZE.mb.w, mbD = SIZE.mb.d;
+  const positions = [
+    [-mbW/2+0.5, -mbD/2+0.5], [0, -mbD/2+0.5], [mbW/2-0.5, -mbD/2+0.5],
+    [-mbW/2+0.5, 0],          [0, 0],          [mbW/2-0.5, 0],
+    [-mbW/2+0.5, mbD/2-0.5],  [0, mbD/2-0.5],  [mbW/2-0.5, mbD/2-0.5],
+  ];
+  positions.forEach(([x, z]) => {
+    const so = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 6), MAT.standoff);
+    so.position.set(x, 0.3, z);
+    so.castShadow = true;
+    g.add(so);
+  });
+  g.userData = { name: 'スタンドオフ' };
+  return g;
+}
 
-        // --- 3D Visualization Logic (Three.js) ---
-        let scene, camera, renderer, controls;
-        const meshes = {};
-        
-        // 簡易的な3Dパーツのサイズ、配置位置、色の定義
-        const partDefinitions = {
-            case: { size: [4.5, 9, 9], pos: [0, 0, 0], color: 0x374151, opacity: 0.1, transparent: true, wireframe: true },
-            motherboard: { size: [0.2, 7, 6], pos: [1.8, 1, -1], color: 0x1f2937 },
-            cpu: { size: [0.3, 1.5, 1.5], pos: [1.6, 2.5, -2], color: 0x10b981 }, 
-            memory: { size: [0.4, 2.5, 1.5], pos: [1.6, 2.5, 0.5], color: 0x3b82f6 }, 
-            gpu: { size: [2.5, 1.5, 6], pos: [0.5, -0.5, -1], color: 0x8b5cf6 }, 
-            powerSupply: { size: [4, 2.5, 3.5], pos: [0, -3.2, 2.5], color: 0xf59e0b }, 
-            storage: { size: [0.3, 0.5, 2], pos: [1.6, -2, -2], color: 0x06b6d4 } 
-        };
+function createMotherboard() {
+  const g = new THREE.Group();
+  const { w, h, d } = SIZE.mb;
 
-        function init3D() {
-            if (!els.container3D) return;
-            
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color('#0a0a0c'); // bg-gaming-900
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.mb);
+  base.castShadow = true; base.receiveShadow = true;
+  g.add(base);
 
-            camera = new THREE.PerspectiveCamera(45, els.container3D.clientWidth / els.container3D.clientHeight, 0.1, 1000);
-            camera.position.set(-15, 8, 15); // 左斜め上から見下ろす初期アングル
+  // チップセットヒートシンク
+  const chipset = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 1.8), MAT.heatsink);
+  chipset.position.set(1.5, 0.3, 2);
+  chipset.castShadow = true;
+  g.add(chipset);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(els.container3D.clientWidth, els.container3D.clientHeight);
-            els.container3D.appendChild(renderer.domElement);
+  // VRMヒートシンク
+  const vrm = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 3), MAT.heatsink);
+  vrm.position.set(-3, 0.3, -2);
+  vrm.castShadow = true;
+  g.add(vrm);
 
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.target.set(0, 0, 0);
+  // CPUソケット（窪み）
+  const socket = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 2), MAT.cpuBottom);
+  socket.position.set(-1, 0.2, -2);
+  g.add(socket);
 
-            // 照明の設定
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-            scene.add(ambientLight);
-            
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight.position.set(10, 20, 10);
-            scene.add(dirLight);
-            
-            const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
-            dirLight2.position.set(-10, -10, -10);
-            scene.add(dirLight2);
+  // メモリスロット（4本）
+  for (let i = 0; i < 4; i++) {
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 4), MAT.cpuBottom);
+    slot.position.set(2.5 + i * 0.4, 0.3, -2);
+    g.add(slot);
+  }
 
-            // 床のグリッド
-            const gridHelper = new THREE.GridHelper(20, 20, 0x374151, 0x1f2937);
-            gridHelper.position.y = -5;
-            scene.add(gridHelper);
+  // PCIeスロット
+  const pcie1 = new THREE.Mesh(new THREE.BoxGeometry(5, 0.2, 0.3), MAT.cpuBottom);
+  pcie1.position.set(-1, 0.25, 3);
+  g.add(pcie1);
+  const pcie2 = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 0.3), MAT.cpuBottom);
+  pcie2.position.set(-1.5, 0.25, 4);
+  g.add(pcie2);
 
-            // パーツごとのメッシュを生成してシーンに追加
-            for (const [key, def] of Object.entries(partDefinitions)) {
-                const geometry = new THREE.BoxGeometry(def.size[0], def.size[1], def.size[2]);
-                const material = new THREE.MeshLambertMaterial({ 
-                    color: def.color,
-                    transparent: def.transparent || false,
-                    opacity: def.opacity || 1.0,
-                    wireframe: def.wireframe || false,
-                    depthWrite: !def.transparent
-                });
-                
-                // 輪郭線を追加して形状を分かりやすくする
-                const edges = new THREE.EdgesGeometry(geometry);
-                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 }));
-                
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.add(line);
-                
-                // 初期状態は画面上空に配置し、非表示にする
-                mesh.position.set(def.pos[0], def.pos[1] + 15, def.pos[2]); 
-                mesh.visible = false;
-                
-                scene.add(mesh);
-                meshes[key] = mesh;
-            }
+  // M.2スロット
+  const m2slot = new THREE.Mesh(new THREE.BoxGeometry(3, 0.05, 0.5), MAT.cpuBottom);
+  m2slot.position.set(1, 0.18, 0);
+  g.add(m2slot);
 
-            els.loading3D.style.display = 'none';
+  // I/Oパネル
+  const io = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.5, 4), MAT.heatsink);
+  io.position.set(-w/2 - 0.1, 0.9, -d/2 + 2.5);
+  g.add(io);
 
-            // リサイズ対応
-            window.addEventListener('resize', () => {
-                if (!els.container3D) return;
-                camera.aspect = els.container3D.clientWidth / els.container3D.clientHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(els.container3D.clientWidth, els.container3D.clientHeight);
-            });
+  g.userData = { name: 'マザーボード' };
+  return g;
+}
 
-            animate3D();
-        }
+function createCPU() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, 1.8), MAT.cpuBottom);
+  g.add(body);
+  const ihs = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 1.4), MAT.cpu);
+  ihs.position.y = 0.12;
+  ihs.castShadow = true;
+  g.add(ihs);
+  // 三角マーク
+  const triGeo = new THREE.ConeGeometry(0.1, 0.05, 3);
+  const tri = new THREE.Mesh(triGeo, new THREE.MeshStandardMaterial({ color: 0xffb454 }));
+  tri.position.set(-0.6, 0.18, -0.6);
+  tri.rotation.y = Math.PI / 4;
+  g.add(tri);
+  g.userData = { name: 'CPU' };
+  return g;
+}
 
-        function animate3D() {
-            requestAnimationFrame(animate3D);
-            controls.update();
+function createCooler() {
+  const g = new THREE.Group();
+  // ベース
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.2, 2.2), MAT.cpu);
+  base.position.y = 0.1;
+  g.add(base);
+  // ヒートパイプ
+  for (let i = 0; i < 4; i++) {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3, 8), MAT.cpu);
+    pipe.position.set(-0.6 + i * 0.4, 1.5, 0);
+    g.add(pipe);
+  }
+  // フィン（ヒートシンク本体）
+  const fins = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 1.2), MAT.heatsink);
+  fins.position.y = 2.3;
+  fins.castShadow = true;
+  g.add(fins);
+  // フィンのライン
+  for (let i = 0; i < 10; i++) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(2.41, 0.04, 1.21), MAT.cpuBottom);
+    line.position.y = 1.1 + i * 0.26;
+    g.add(line);
+  }
+  // ファン
+  const fan = createFan(1.4, 0x2a3242);
+  fan.position.set(0, 2.3, 0.9);
+  fan.rotation.x = Math.PI / 2;
+  g.add(fan);
+  g.userData = { name: 'CPUクーラー' };
+  return g;
+}
 
-            // パーツが選択されている場合、滑らかに定位置へ落下させるアニメーション
-            for (const key in meshes) {
-                if (meshes[key].visible) {
-                    const targetY = partDefinitions[key].pos[1];
-                    meshes[key].position.y += (targetY - meshes[key].position.y) * 0.15;
-                }
-            }
+function createFan(radius, color) {
+  const g = new THREE.Group();
+  const frame = new THREE.Mesh(
+    new THREE.BoxGeometry(radius * 2, 0.4, radius * 2),
+    MAT.fan
+  );
+  g.add(frame);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.3, radius * 0.3, 0.3, 16), MAT.fan);
+  hub.rotation.x = Math.PI / 2;
+  g.add(hub);
+  // 7枚羽
+  const bladeMat = new THREE.MeshStandardMaterial({ color: color || 0x2a3242, metalness: 0.3, roughness: 0.6, transparent: true, opacity: 0.85 });
+  const blades = new THREE.Group();
+  for (let i = 0; i < 7; i++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(radius * 0.75, 0.15, 0.3), bladeMat);
+    blade.position.set(radius * 0.5, 0, 0);
+    blade.rotation.y = 0.3;
+    const wrap = new THREE.Group();
+    wrap.add(blade);
+    wrap.rotation.y = (i / 7) * Math.PI * 2;
+    blades.add(wrap);
+  }
+  blades.rotation.x = Math.PI / 2;
+  g.add(blades);
+  g.userData = { blades, name: 'ファン' };
+  return g;
+}
 
-            renderer.render(scene, camera);
-        }
+function createRAM() {
+  const g = new THREE.Group();
+  const pcb = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 0.2), MAT.ram);
+  g.add(pcb);
+  const heat = new THREE.Mesh(new THREE.BoxGeometry(4.1, 1.3, 0.3), MAT.ramHeat);
+  heat.position.y = 0.1;
+  heat.castShadow = true;
+  g.add(heat);
+  // RGB風のトップライン
+  const rgb = new THREE.Mesh(
+    new THREE.BoxGeometry(3.8, 0.1, 0.15),
+    new THREE.MeshBasicMaterial({ color: 0x5ee3ff })
+  );
+  rgb.position.y = 0.8;
+  g.add(rgb);
+  g.userData = { name: 'メモリ' };
+  return g;
+}
 
-        function updateVisualizer() {
-            // エラー状態の判定（パーツを赤くハイライトするため）
-            const hasSocketError = state.errors.some(e => e.includes('ソケット不適合'));
-            const hasMemoryError = state.errors.some(e => e.includes('メモリ規格不適合'));
-            const hasSizeError = state.errors.some(e => e.includes('サイズ不適合'));
-            const hasGpuError = state.errors.some(e => e.includes('GPUサイズ超過'));
+function createGPU() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(7, 1.5, 3), MAT.gpu);
+  body.castShadow = true;
+  g.add(body);
+  // ファン×2
+  const f1 = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.3, 24), MAT.fan);
+  f1.rotation.x = Math.PI / 2;
+  f1.position.set(-1.8, 0.9, 0);
+  g.add(f1);
+  const f2 = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.3, 24), MAT.fan);
+  f2.rotation.x = Math.PI / 2;
+  f2.position.set(1.8, 0.9, 0);
+  g.add(f2);
+  // アクセントライン
+  const accent = new THREE.Mesh(new THREE.BoxGeometry(7.05, 0.15, 0.1), MAT.gpuAccent);
+  accent.position.set(0, -0.5, 1.45);
+  g.add(accent);
+  // 端子部（PCIeフィンガー）
+  const pcie = new THREE.Mesh(new THREE.BoxGeometry(5, 0.15, 0.5), MAT.cpu);
+  pcie.position.set(0, -0.85, -0.5);
+  g.add(pcie);
+  g.userData = { name: 'グラフィックカード' };
+  return g;
+}
 
-            const updateMesh = (category, isError = false) => {
-                const part = state.selectedParts[category];
-                const mesh = meshes[category];
-                if (!mesh) return;
+function createPSU() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.4, 5), MAT.psu);
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+  // ファン
+  const fan = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.3, 24), MAT.fan);
+  fan.rotation.x = Math.PI / 2;
+  fan.rotation.z = Math.PI / 2;
+  fan.position.y = -1.75;
+  g.add(fan);
+  // ラベル
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 1),
+    new THREE.MeshBasicMaterial({ color: 0x5ee3ff, transparent: true, opacity: 0.6 })
+  );
+  label.position.set(0, 0, 2.51);
+  g.add(label);
+  g.userData = { name: '電源ユニット' };
+  return g;
+}
 
-                if (part) {
-                    // 新規に選択された時だけ、上空に配置して落下アニメーションをトリガー
-                    if (!mesh.visible) {
-                        mesh.position.y = partDefinitions[category].pos[1] + 8; 
-                        mesh.visible = true;
-                    }
-                    
-                    // エラー時は赤色(0xef4444)、正常時はデフォルト色を適用
-                    mesh.material.color.setHex(isError ? 0xef4444 : partDefinitions[category].color);
-                    if(category === 'case') {
-                        mesh.material.color.setHex(isError ? 0xef4444 : partDefinitions.case.color);
-                    }
-                } else {
-                    mesh.visible = false; // 未選択時は非表示
-                }
-            };
+function createHDD() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(4, 0.8, 2.8), MAT.hdd);
+  body.castShadow = true;
+  g.add(body);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.02, 2.6), MAT.cpu);
+  top.position.y = 0.41;
+  g.add(top);
+  g.userData = { name: 'HDD' };
+  return g;
+}
 
-            updateMesh('powerSupply');
-            updateMesh('motherboard', hasSocketError || hasMemoryError || hasSizeError);
-            updateMesh('cpu', hasSocketError);
-            updateMesh('memory', hasMemoryError);
-            updateMesh('storage');
-            updateMesh('gpu', hasGpuError);
-            updateMesh('case', hasSizeError || hasGpuError);
-        }
+function createM2() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3, 0.05, 0.7), MAT.m2);
+  g.add(body);
+  const chip = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.1, 0.5), MAT.cpuBottom);
+  chip.position.y = 0.05;
+  g.add(chip);
+  g.userData = { name: 'M.2 SSD' };
+  return g;
+}
 
-        // 新機能: 組み立て手順ガイド
-        function updateAssemblyGuide() {
-            let guideHtml = '';
-            const { cpu, motherboard, memory, gpu, powerSupply, case: pcCase, storage } = state.selectedParts;
+// ============================================================
+// ASSEMBLE PARTS INTO SCENE AT TARGET POSITIONS
+// ============================================================
 
-            // 選ばれていないパーツを順に判定し、次のステップを案内する
-            if (!cpu) {
-                guideHtml = `<span class="text-gaming-accent font-bold">STEP 1: CPUの選択</span><br>まずはPCの性能の要となる「CPU」を選びましょう。`;
-            } else if (!motherboard) {
-                guideHtml = `<span class="text-gaming-accent font-bold">STEP 2: マザーボードの選択</span><br>選んだCPUのソケット（${cpu.socket}）に対応したマザーボードを選びます。`;
-            } else if (!memory) {
-                guideHtml = `<span class="text-gaming-accent font-bold">STEP 3: メモリの取り付け</span><br>マザーボード（${motherboard.memoryType}対応）にメモリを挿します。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> 向きに注意して、両端のツメがカチッと鳴るまで真っ直ぐ上から押し込みます。</span>`;
-            } else if (!storage) {
-                guideHtml = `<span class="text-gaming-accent font-bold">STEP 4: ストレージの取り付け</span><br>データを保存するSSDを選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> M.2 SSDはマザーボードの専用スロットに斜めに挿し込み、小さなネジで固定します。</span>`;
-            } else if (!pcCase) {
-                guideHtml = `<span class="text-gaming-accent font-bold">STEP 5: PCケースの選択</span><br>これまでのパーツ（${motherboard.formFactor}サイズ）が収まるケースを選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> マザーボードをケースにネジ止めする前に、CPU・メモリ・SSDを基板に取り付けておくのがセオリーです。</span>`;
-            } else if (!powerSupply) {
-                guideHtml = `<span class="text-gaming-accent font-bold">STEP 6: 電源の配線</span><br>システム全体に電気を送る電源を選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> ケースの所定位置にネジ止めし、マザーボードやCPUのコネクタに太いケーブルをしっかりと挿し込みます。</span>`;
-            } else if (!gpu) {
-                guideHtml = `<span class="text-gaming-accent font-bold">STEP 7: グラフィックボードの取り付け</span><br>最後にゲームの要、グラボを選びます。<br><span class="text-gray-400 text-xs mt-1 block">💡 <span class="text-white">【実作業のコツ】</span> 非常に大きいので、ケースの中で他のケーブルに干渉しないようにマザーボードのPCIeスロットに挿し込み、ケースにネジ止めします。</span>`;
-            } else {
-                guideHtml = `<span class="text-gaming-accent font-bold text-lg">🎉 構成完了！</span><br>全てのパーツが揃いました。互換性にエラーが出ていないか確認しましょう。<br><span class="text-emerald-400 text-xs mt-2 block font-bold border-t border-gaming-700 pt-2">💡 【実作業の仕上げ】 全てのケーブルが繋がっているか確認し、ケースのフタを閉めて電源を入れ、OS(Windows等)をインストールすれば完成です！</span>`;
-            }
+// 配置ターゲット（ケース座標系）
+const POS = {
+  case:      { pos: [0, 0, 0] },
+  standoff:  { pos: [-2, -3.5, 0] },   // ケース底＋少し
+  mb:        { pos: [-1.8, -3.2, 0], rot: [0, 0, 0] },
+  cpu:       { pos: [-2.8, -2.95, -2] },
+  cooler:    { pos: [-2.8, -1.8, -2] },
+  ram1:      { pos: [0.7, -2.2, -2] },
+  ram2:      { pos: [1.1, -2.2, -2] },
+  m2:        { pos: [-0.8, -2.95, 0] },
+  gpu:       { pos: [-1.8, -3.0, 3.5], rot: [0, 0, 0] },
+  psu:       { pos: [0, -7.3, -3], scale: 1 },  // ケース下部
+  hdd:       { pos: [0.5, -5.5, 4] },
+  fan_front: { pos: [3.5, 0, 6.5], rot: [0, Math.PI / 2, 0] },
+  fan_rear:  { pos: [3.5, 3, -6.5], rot: [0, Math.PI / 2, 0] },
+};
 
-            els.assemblyGuide.innerHTML = guideHtml;
-        }
+// ビルド済みパーツ格納
+const parts = {};
+const highlights = {};  // ハイライト枠
+const labels = {};      // CSS2D的な追加要素は使わず、HTMLオーバーレイで対応
 
-        // アプリケーション起動
-        document.addEventListener('DOMContentLoaded', init);
+// ===== 全パーツ生成（非表示で初期化） =====
+parts.case     = createCase();
+parts.standoff = createStandoffs();
+parts.mb       = createMotherboard();
+parts.cpu      = createCPU();
+parts.cooler   = createCooler();
+parts.ram1     = createRAM();
+parts.ram2     = createRAM();
+parts.m2       = createM2();
+parts.gpu      = createGPU();
+parts.psu      = createPSU();
+parts.hdd      = createHDD();
+parts.fan_front = createFan(1.6, 0x2a3242);
+parts.fan_rear  = createFan(1.4, 0x2a3242);
 
-    </script>
+// ケース内配置
+Object.keys(parts).forEach(k => {
+  const p = parts[k];
+  const cfg = POS[k];
+  if (cfg) {
+    p.position.set(...cfg.pos);
+    if (cfg.rot) p.rotation.set(...cfg.rot);
+  }
+  p.visible = false;
+  scene.add(p);
+});
+
+// ===== ケーブル（配線）の経路定義 =====
+function createCableLine(points, color, width) {
+  // points: THREE.Vector3[]
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geom = new THREE.TubeGeometry(curve, 40, width || 0.08, 8, false);
+  const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.85 });
+  const mesh = new THREE.Mesh(geom, mat);
+  return mesh;
+}
+
+const cablesGroup = new THREE.Group();
+scene.add(cablesGroup);
+
+// STEP 14: 電源ケーブル（3本）
+const cablesPower = new THREE.Group();
+// ATX24pin: PSU(下部) → MB右側
+cablesPower.add(createCableLine([
+  new THREE.Vector3(0, -6, -3),
+  new THREE.Vector3(2, -4.5, -2),
+  new THREE.Vector3(3.2, -3.2, -1),
+  new THREE.Vector3(3, -3.0, 0),
+], 0xffb454, 0.1));
+// EPS8pin (CPU補助): PSU → MB左上
+cablesPower.add(createCableLine([
+  new THREE.Vector3(-0.5, -6, -3),
+  new THREE.Vector3(-3, -5, -4),
+  new THREE.Vector3(-5, -3.5, -4),
+  new THREE.Vector3(-5, -2.8, -3),
+], 0xffb454, 0.08));
+// PCIe8pin×2: PSU → GPU
+cablesPower.add(createCableLine([
+  new THREE.Vector3(1, -6, -2),
+  new THREE.Vector3(1, -4.5, 0),
+  new THREE.Vector3(0, -3.5, 3),
+  new THREE.Vector3(-0.5, -2.5, 3.5),
+], 0xffb454, 0.09));
+cablesPower.visible = false;
+cablesGroup.add(cablesPower);
+
+// STEP 15: データ・ファンケーブル
+const cablesData = new THREE.Group();
+// SATA: HDD → MB
+cablesData.add(createCableLine([
+  new THREE.Vector3(0.5, -5, 4),
+  new THREE.Vector3(2, -4, 3),
+  new THREE.Vector3(3, -3.2, 2),
+], 0x5ee3ff, 0.06));
+// Front Panel: 前面 → MB
+cablesData.add(createCableLine([
+  new THREE.Vector3(2, -3, 7),
+  new THREE.Vector3(2.5, -3, 4),
+  new THREE.Vector3(3, -3.2, 2.5),
+], 0x5ee3ff, 0.05));
+// Fan cables (pink)
+cablesData.add(createCableLine([
+  new THREE.Vector3(3.5, 0, 6.5),
+  new THREE.Vector3(2, -1, 4),
+  new THREE.Vector3(1, -2, 2),
+  new THREE.Vector3(0, -2.8, 0),
+], 0xff6b9d, 0.05));
+cablesData.add(createCableLine([
+  new THREE.Vector3(3.5, 3, -6.5),
+  new THREE.Vector3(2, 1, -4),
+  new THREE.Vector3(0, -1, -3),
+  new THREE.Vector3(-1, -2.8, -2.5),
+], 0xff6b9d, 0.05));
+cablesData.visible = false;
+cablesGroup.add(cablesData);
+
+// ============================================================
+// HIGHLIGHT (現在ステップのパーツを光らせる)
+// ============================================================
+function createHighlightBox(target) {
+  const box = new THREE.Box3().setFromObject(target);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const geo = new THREE.BoxGeometry(size.x * 1.15, size.y * 1.15, size.z * 1.15);
+  const edges = new THREE.EdgesGeometry(geo);
+  const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x5ee3ff }));
+  line.position.copy(center);
+  line.userData.pulse = 0;
+  return line;
+}
+
+let currentHighlight = null;
+function setHighlight(partKey) {
+  if (currentHighlight) {
+    scene.remove(currentHighlight);
+    currentHighlight = null;
+  }
+  if (partKey && parts[partKey] && parts[partKey].visible) {
+    currentHighlight = createHighlightBox(parts[partKey]);
+    scene.add(currentHighlight);
+  }
+}
+
+// ============================================================
+// ORBIT CONTROLS (自作の簡易版 / OrbitControls外部ロード不要)
+// ============================================================
+class SimpleOrbit {
+  constructor(cam, dom) {
+    this.cam = cam;
+    this.dom = dom;
+    this.target = new THREE.Vector3(0, -1, 0);
+    this.radius = cam.position.distanceTo(this.target);
+    this.theta = Math.atan2(cam.position.x - this.target.x, cam.position.z - this.target.z);
+    this.phi = Math.acos((cam.position.y - this.target.y) / this.radius);
+    this.dragging = false;
+    this.panning = false;
+    this.lx = 0; this.ly = 0;
+    this.enabled = true;
+    this.minR = 8; this.maxR = 60;
+    this._bind();
+    this.update();
+  }
+  _bind() {
+    this.dom.addEventListener('mousedown', e => {
+      this.dragging = e.button === 0;
+      this.panning = e.button === 2;
+      this.lx = e.clientX; this.ly = e.clientY;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!this.enabled) return;
+      if (!this.dragging && !this.panning) return;
+      const dx = e.clientX - this.lx, dy = e.clientY - this.ly;
+      this.lx = e.clientX; this.ly = e.clientY;
+      if (this.dragging) {
+        this.theta -= dx * 0.008;
+        this.phi = Math.max(0.15, Math.min(Math.PI - 0.15, this.phi - dy * 0.008));
+      } else if (this.panning) {
+        const panScale = this.radius * 0.001;
+        const offset = new THREE.Vector3();
+        // カメラ右方向＆上方向に平行移動
+        const right = new THREE.Vector3();
+        this.cam.getWorldDirection(offset);
+        right.crossVectors(offset, this.cam.up).normalize();
+        this.target.addScaledVector(right, -dx * panScale);
+        this.target.y += dy * panScale;
+      }
+      this.update();
+    });
+    window.addEventListener('mouseup', () => {
+      this.dragging = false; this.panning = false;
+    });
+    this.dom.addEventListener('wheel', e => {
+      if (!this.enabled) return;
+      this.radius = Math.max(this.minR, Math.min(this.maxR, this.radius + e.deltaY * 0.015));
+      this.update();
+      e.preventDefault();
+    }, { passive: false });
+    this.dom.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  setView(name) {
+    const r = 26;
+    const map = {
+      iso:   { t: Math.PI/5, p: Math.PI/3 },
+      front: { t: 0, p: Math.PI/2 },
+      side:  { t: Math.PI/2, p: Math.PI/2 },
+      top:   { t: 0, p: 0.2 },
+    };
+    if (!map[name]) return;
+    this.theta = map[name].t;
+    this.phi = map[name].p;
+    this.radius = r;
+    this.target.set(0, -1, 0);
+    this.update();
+  }
+  update() {
+    const s = Math.sin(this.phi);
+    this.cam.position.x = this.target.x + this.radius * s * Math.sin(this.theta);
+    this.cam.position.y = this.target.y + this.radius * Math.cos(this.phi);
+    this.cam.position.z = this.target.z + this.radius * s * Math.cos(this.theta);
+    this.cam.lookAt(this.target);
+  }
+}
+const orbit = new SimpleOrbit(camera, renderer.domElement);
+
+// ============================================================
+// LABEL SYSTEM (HTMLオーバーレイで3D座標にラベル表示)
+// ============================================================
+const labelLayer = document.createElement('div');
+Object.assign(labelLayer.style, {
+  position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden'
+});
+canvasWrap.appendChild(labelLayer);
+
+// ラベル定義：現在ステップのパーツに矢印付きで説明を出す
+const LABEL_DEFS = {
+  case:      [{ pos: [0, 8, 0], text: 'PCケース\n(Mid Tower)' }],
+  standoff:  [{ pos: [-3.5, -2.5, -4], text: 'スタンドオフ\n(9箇所に装着)' }],
+  mb:        [{ pos: [5, -2, 0], text: 'マザーボード\n(ATX)' }],
+  cpu:       [{ pos: [-5, -2, -3], text: 'CPU\n△マークを合わせる' }],
+  cooler:    [{ pos: [-5.5, 0, -2], text: 'CPUクーラー\nグリスは米粒大' }],
+  ram1:      [{ pos: [4, -0.5, -2], text: 'メモリ A2\n(1枚目)' }],
+  ram2:      [{ pos: [4, -0.5, -2], text: 'メモリ B2\n(2枚目)' }],
+  m2:        [{ pos: [3, -2, 0.5], text: 'M.2 SSD\nOSドライブ' }],
+  gpu:       [{ pos: [5, -2.5, 4], text: 'グラフィックカード\nPCIe x16' }],
+  psu:       [{ pos: [5, -7, -3], text: '電源ユニット\n850W 80+ Gold' }],
+  hdd:       [{ pos: [5, -5, 4], text: '3.5" HDD\nデータ用' }],
+  fan_front: [{ pos: [5, 1, 6.5], text: '前面ファン\n(吸気)' }],
+  fan_rear:  [{ pos: [5, 4, -6.5], text: '背面ファン\n(排気)' }],
+  cables_power: [{ pos: [4, -5, -1], text: '電源ケーブル\n黄=12V系統' }],
+  cables_data:  [{ pos: [4, -3.5, 3], text: 'データ＋ファン\n水色=SATA ピンク=Fan' }],
+};
+
+let activeLabels = [];
+function clearLabels() {
+  activeLabels.forEach(el => el.remove());
+  activeLabels = [];
+}
+function showLabels(stepKey) {
+  clearLabels();
+  const defs = LABEL_DEFS[stepKey] || [];
+  defs.forEach(def => {
+    const el = document.createElement('div');
+    el.className = 'label-3d';
+    el.innerHTML = def.text.split('\n').map((l, i) =>
+      i === 0
+        ? `<div style="font-size:11px;color:#5ee3ff;letter-spacing:0.1em;font-weight:500">${l}</div>`
+        : `<div style="font-size:10px;color:#8b9bb0;margin-top:2px">${l}</div>`
+    ).join('');
+    Object.assign(el.style, {
+      position: 'absolute',
+      background: 'rgba(17, 24, 33, 0.92)',
+      border: '1px solid #5ee3ff',
+      padding: '6px 10px',
+      pointerEvents: 'none',
+      whiteSpace: 'pre',
+      transform: 'translate(-50%, -100%)',
+      transition: 'opacity 0.2s',
+      backdropFilter: 'blur(4px)',
+      zIndex: 5,
+    });
+    el._worldPos = new THREE.Vector3(...def.pos);
+    labelLayer.appendChild(el);
+    activeLabels.push(el);
+  });
+}
+function updateLabels() {
+  activeLabels.forEach(el => {
+    const v = el._worldPos.clone().project(camera);
+    const x = (v.x * 0.5 + 0.5) * canvasWrap.clientWidth;
+    const y = (-v.y * 0.5 + 0.5) * canvasWrap.clientHeight;
+    const behind = v.z > 1;
+    el.style.left = x + 'px';
+    el.style.top = (y - 12) + 'px';
+    el.style.opacity = behind ? 0 : 1;
+  });
+}
+
+// ============================================================
+// STATE MANAGEMENT
+// ============================================================
+const state = {
+  currentStep: -1,    // -1 = 何も配置されていない
+  auto: false,
+  autoTimer: null,
+  exploded: false,
+};
+
+// ステップIDとパーツキーの対応
+const STEP_PART_KEYS = {
+  case: 'case', standoff: 'standoff', mb: 'mb', cpu: 'cpu',
+  cooler: 'cooler', ram1: 'ram1', ram2: 'ram2', m2: 'm2',
+  gpu: 'gpu', psu: 'psu', hdd: 'hdd',
+  fan_front: 'fan_front', fan_rear: 'fan_rear',
+  cables_power: '__cables_power__', cables_data: '__cables_data__',
+};
+
+// ステップまで進める（追加）or 戻す（削除）
+function setStep(targetIdx) {
+  targetIdx = Math.max(-1, Math.min(STEPS.length - 1, targetIdx));
+
+  // 可視状態を再計算: 0..targetIdx までのパーツを表示、それ以外を非表示
+  STEPS.forEach((step, i) => {
+    const key = STEP_PART_KEYS[step.id];
+    const shouldShow = i <= targetIdx;
+    if (key === '__cables_power__') {
+      cablesPower.visible = shouldShow;
+    } else if (key === '__cables_data__') {
+      cablesData.visible = shouldShow;
+    } else if (parts[key]) {
+      parts[key].visible = shouldShow;
+    }
+  });
+
+  state.currentStep = targetIdx;
+  updateUI();
+
+  // 現在ステップのパーツをハイライト
+  if (targetIdx >= 0) {
+    const key = STEP_PART_KEYS[STEPS[targetIdx].id];
+    if (key && !key.startsWith('__') && parts[key]) {
+      setHighlight(key);
+    } else {
+      setHighlight(null);
+    }
+    showLabels(STEPS[targetIdx].id);
+
+    // パーツの「落ちてくる」アニメ
+    animateInStep(targetIdx);
+  } else {
+    setHighlight(null);
+    clearLabels();
+  }
+
+  // 完了判定
+  if (targetIdx === STEPS.length - 1) {
+    setTimeout(() => {
+      document.getElementById('complete').classList.add('visible');
+    }, 800);
+  } else {
+    document.getElementById('complete').classList.remove('visible');
+  }
+}
+
+// パーツ追加時の落下アニメーション
+function animateInStep(idx) {
+  const step = STEPS[idx];
+  const key = STEP_PART_KEYS[step.id];
+  if (!key || key.startsWith('__')) return;
+  const p = parts[key];
+  if (!p) return;
+
+  const target = POS[key];
+  if (!target) return;
+  const [tx, ty, tz] = target.pos;
+  const startY = ty + 8;
+  p.position.y = startY;
+  const startTime = performance.now();
+  const dur = 600;
+  function step2(t) {
+    const k = Math.min(1, (t - startTime) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    p.position.y = startY + (ty - startY) * e;
+    if (k < 1) requestAnimationFrame(step2);
+    else p.position.y = ty;
+  }
+  requestAnimationFrame(step2);
+}
+
+// ============================================================
+// EXPLODED VIEW (分解表示)
+// ============================================================
+function toggleExploded() {
+  state.exploded = !state.exploded;
+  document.getElementById('btn-explode').textContent = state.exploded ? '⊞ 元に戻す' : '⊞ 分解表示';
+  const factor = state.exploded ? 2.2 : 1.0;
+  Object.keys(parts).forEach(key => {
+    const p = parts[key];
+    const cfg = POS[key];
+    if (!cfg) return;
+    const [x, y, z] = cfg.pos;
+    const tx = x * factor;
+    const ty = y + (state.exploded ? (y - (-3)) * 0.5 : 0);
+    const tz = z * factor;
+    animateTo(p, tx, ty, tz, 500);
+  });
+  if (state.exploded) {
+    cablesGroup.visible = false;
+  } else {
+    cablesGroup.visible = true;
+  }
+}
+function animateTo(obj, tx, ty, tz, dur) {
+  const sx = obj.position.x, sy = obj.position.y, sz = obj.position.z;
+  const t0 = performance.now();
+  function loop(t) {
+    const k = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    obj.position.x = sx + (tx - sx) * e;
+    obj.position.y = sy + (ty - sy) * e;
+    obj.position.z = sz + (tz - sz) * e;
+    if (k < 1) requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ============================================================
+// UI RENDERING
+// ============================================================
+const stepList = document.getElementById('step-list');
+function renderStepList() {
+  stepList.innerHTML = STEPS.map((s, i) => `
+    <div class="step ${i === state.currentStep ? 'current' : ''} ${i < state.currentStep ? 'done' : ''}" data-idx="${i}">
+      <div class="step-num">${String(i + 1).padStart(2, '0')}</div>
+      <div class="step-title">
+        ${s.title}
+        <small>${s.cat}</small>
+      </div>
+      <div class="step-check"></div>
+    </div>
+  `).join('');
+  stepList.querySelectorAll('.step').forEach(el => {
+    el.onclick = () => setStep(parseInt(el.dataset.idx));
+  });
+}
+
+function renderDetail() {
+  const panel = document.getElementById('detail');
+  if (state.currentStep < 0) {
+    panel.innerHTML = `
+      <div class="detail-header">
+        <div class="detail-tag">WELCOME</div>
+        <div class="detail-title">PC Assembly Lab</div>
+        <div class="detail-sub">自作PC組み立て · 3Dシミュレーター</div>
+      </div>
+      <div class="detail-section">
+        <h3>▸ USAGE</h3>
+        <p>右上「▶ オート組立」で自動進行、または左の工程リストから任意のステップを選んで開始してください。マウスで3D空間を自由に回転・ズームできます。</p>
+      </div>
+      <div class="detail-section">
+        <h3>▸ PARTS LIST</h3>
+        <p>PCケース / マザーボード / CPU / クーラー / メモリ×2 / M.2 SSD / GPU / 電源 / HDD / ケースファン×2 / 配線一式 の計15ステップ構成。</p>
+      </div>
+      <div class="detail-section">
+        <div class="warn">
+          <strong>◆ INFO</strong>
+          このシミュレーターは学習用です。実機で組む際は必ず各パーツのマニュアルを参照し、静電気対策を徹底してください。
+        </div>
+      </div>
+    `;
+    return;
+  }
+  const s = STEPS[state.currentStep];
+  panel.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-tag">${s.tag} · ${s.cat}</div>
+      <div class="detail-title">${s.title}</div>
+      <div class="detail-sub">${s.subtitle}</div>
+    </div>
+    <div class="detail-section">
+      <h3>▸ OVERVIEW</h3>
+      <p>${s.desc}</p>
+    </div>
+    <div class="detail-section">
+      <h3>▸ CHECKLIST</h3>
+      <ul class="checklist">
+        ${s.checks.map(c => `<li>${c}</li>`).join('')}
+      </ul>
+    </div>
+    ${s.warn ? `
+    <div class="detail-section">
+      <div class="warn">
+        <strong>⚠ ${s.warn.t}</strong>
+        ${s.warn.d}
+      </div>
+    </div>` : ''}
+    ${s.spec ? `
+    <div class="detail-section">
+      <h3>▸ SPEC</h3>
+      <dl class="spec-grid">
+        ${Object.entries(s.spec).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}
+      </dl>
+    </div>` : ''}
+  `;
+}
+
+function renderTimeline() {
+  const ticksEl = document.getElementById('tl-ticks');
+  ticksEl.innerHTML = STEPS.map(() => `<div class="tl-tick"></div>`).join('');
+  const pct = state.currentStep >= 0 ? ((state.currentStep + 1) / STEPS.length) * 100 : 0;
+  document.getElementById('tl-fill').style.width = pct + '%';
+  document.getElementById('tl-current').textContent = state.currentStep < 0
+    ? '--' : String(state.currentStep + 1).padStart(2, '0');
+  document.getElementById('tl-prev').disabled = state.currentStep < 0;
+  document.getElementById('tl-next').disabled = state.currentStep >= STEPS.length - 1;
+}
+
+function renderBanner() {
+  const b = document.getElementById('step-banner');
+  if (state.currentStep < 0) {
+    b.style.display = 'none';
+    return;
+  }
+  b.style.display = '';
+  const s = STEPS[state.currentStep];
+  b.querySelector('.tag').textContent = `${s.tag} / ${String(STEPS.length).padStart(2, '0')} · ${s.cat}`;
+  b.querySelector('.title').textContent = s.title;
+}
+
+function updateUI() {
+  renderStepList();
+  renderDetail();
+  renderTimeline();
+  renderBanner();
+  document.getElementById('hud-progress').textContent =
+    `${state.currentStep + 1} / ${STEPS.length}`;
+  document.getElementById('hud-mode').textContent = state.auto ? 'AUTO' : 'GUIDED';
+}
+
+// ============================================================
+// EVENT BINDINGS
+// ============================================================
+document.getElementById('tl-prev').onclick = () => setStep(state.currentStep - 1);
+document.getElementById('tl-next').onclick = () => setStep(state.currentStep + 1);
+document.getElementById('btn-reset').onclick = () => {
+  stopAuto();
+  setStep(-1);
+};
+document.getElementById('btn-restart').onclick = () => {
+  document.getElementById('complete').classList.remove('visible');
+  setStep(-1);
+};
+document.getElementById('btn-explode').onclick = toggleExploded;
+
+const btnAuto = document.getElementById('btn-auto');
+btnAuto.onclick = () => {
+  if (state.auto) stopAuto();
+  else startAuto();
+};
+function startAuto() {
+  state.auto = true;
+  btnAuto.textContent = '⏸ 一時停止';
+  if (state.currentStep >= STEPS.length - 1) setStep(-1);
+  state.autoTimer = setInterval(() => {
+    if (state.currentStep >= STEPS.length - 1) {
+      stopAuto();
+      return;
+    }
+    setStep(state.currentStep + 1);
+  }, 1800);
+  // 即座に1歩進める
+  setTimeout(() => setStep(state.currentStep + 1), 100);
+}
+function stopAuto() {
+  state.auto = false;
+  btnAuto.textContent = '▶ オート組立';
+  if (state.autoTimer) { clearInterval(state.autoTimer); state.autoTimer = null; }
+  document.getElementById('hud-mode').textContent = 'GUIDED';
+}
+
+// View toggles
+document.querySelectorAll('.view-toggles button').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.view-toggles button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    orbit.setView(btn.dataset.view);
+    document.getElementById('hud-cam').textContent = btn.dataset.view.toUpperCase();
+  };
+});
+
+// Keyboard
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') setStep(state.currentStep + 1);
+  if (e.key === 'ArrowLeft') setStep(state.currentStep - 1);
+  if (e.key === 'r' || e.key === 'R') setStep(-1);
+});
+
+// Resize
+function onResize() {
+  const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', onResize);
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+function animate() {
+  requestAnimationFrame(animate);
+
+  // ファン回転
+  Object.values(parts).forEach(p => {
+    if (p.userData && p.userData.blades) {
+      p.userData.blades.rotation.y += 0.08;
+    }
+  });
+  // CPUクーラーのファン（子グループ内）
+  if (parts.cooler && parts.cooler.visible) {
+    parts.cooler.traverse(obj => {
+      if (obj.userData && obj.userData.blades) {
+        obj.userData.blades.rotation.y += 0.1;
+      }
+    });
+  }
+  // GPUファン回転
+  if (parts.gpu && parts.gpu.visible) {
+    parts.gpu.children.forEach(c => {
+      if (c.geometry && c.geometry.type === 'CylinderGeometry' && c.material === MAT.fan) {
+        c.rotation.y += 0.12;
+      }
+    });
+  }
+
+  // ハイライトのパルス
+  if (currentHighlight) {
+    currentHighlight.userData.pulse += 0.05;
+    const s = 1 + Math.sin(currentHighlight.userData.pulse) * 0.03;
+    currentHighlight.scale.set(s, s, s);
+    currentHighlight.material.opacity = 0.6 + Math.sin(currentHighlight.userData.pulse) * 0.3;
+  }
+
+  // ラベル位置更新
+  updateLabels();
+
+  // ズーム表示
+  document.getElementById('hud-zoom').textContent =
+    (26 / orbit.radius).toFixed(1) + 'x';
+
+  renderer.render(scene, camera);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+updateUI();
+animate();
+
+// 起動時にちょっとだけカメラ動かして3Dとわかるように
+let introT = 0;
+const introInterval = setInterval(() => {
+  orbit.theta += 0.002;
+  orbit.update();
+  introT++;
+  if (introT > 100) clearInterval(introInterval);
+}, 16);
+
+</script>
 </body>
 </html>
